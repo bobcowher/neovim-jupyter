@@ -110,6 +110,57 @@ pub fn build_launch_argv(spec: &KernelspecSpec, connection_file: &PathBuf) -> Ve
     }).collect()
 }
 
+use tokio::process::{Child, Command as TokioCommand};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+pub struct KernelProcess {
+    child: Arc<Mutex<Child>>,
+    pub connection_file: PathBuf,
+    pub conn: ConnectionFile,
+}
+
+impl KernelProcess {
+    pub async fn spawn(kernel_name: &str, cwd: &str, runtime_dir: &PathBuf) -> Result<Self> {
+        let spec = get_kernelspec(kernel_name)?;
+        let conn = ConnectionFile::generate(kernel_name);
+        let conn_path = runtime_dir.join(format!("{}.json", uuid::Uuid::new_v4()));
+        conn.write(&conn_path)?;
+
+        let argv = build_launch_argv(&spec, &conn_path);
+        let child = TokioCommand::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(cwd)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .with_context(|| format!("failed to spawn kernel: {:?}", argv))?;
+
+        Ok(KernelProcess {
+            child: Arc::new(Mutex::new(child)),
+            connection_file: conn_path,
+            conn,
+        })
+    }
+
+    pub async fn kill(&self) {
+        let mut child = self.child.lock().await;
+        let _ = child.kill().await;
+        std::fs::remove_file(&self.connection_file).ok();
+    }
+
+    pub async fn interrupt(&self) {
+        #[cfg(unix)]
+        {
+            let child = self.child.lock().await;
+            if let Some(pid) = child.id() {
+                unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT); }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
