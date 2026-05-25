@@ -1,18 +1,11 @@
-mod client;
-mod kernel;
-mod protocol;
-mod router;
-mod wire;
-
-use anyhow::Result;
-use protocol::{Command, Event};
-use router::Router;
+use nvim_jupyter::protocol::{Command, Event};
+use nvim_jupyter::router::Router;
 use std::io::BufRead;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     let runtime_dir: PathBuf = {
         let base = std::env::var("XDG_DATA_HOME")
             .map(PathBuf::from)

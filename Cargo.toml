@@ -26,6 +26,10 @@ libc = "0.2"
 [dev-dependencies]
 tokio-test = "0.4"
 
+[lib]
+name = "nvim_jupyter"
+path = "src/lib.rs"
+
 [features]
 integration = []
 
