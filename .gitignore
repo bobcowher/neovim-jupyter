@@ -1,0 +1,5 @@
+/target/
+/bin/
+*.ipynb_checkpoints
+.claude/
+.superpowers/
