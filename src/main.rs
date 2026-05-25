@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<Command>(64);
 
     let cmd_tx_clone = cmd_tx.clone();
-    tokio::task::spawn_blocking(move || {
+    let stdin_handle = tokio::task::spawn_blocking(move || {
         let stdin = std::io::stdin();
         for line in stdin.lock().lines() {
             let Ok(line) = line else { break };
@@ -38,7 +38,8 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    tokio::spawn(async move {
+    let router_event_tx = event_tx.clone();
+    let stdout_handle = tokio::spawn(async move {
         let stdout = std::io::stdout();
         while let Some(event) = event_rx.recv().await {
             let mut out = stdout.lock();
@@ -50,12 +51,18 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let mut router = Router::new(event_tx, runtime_dir);
+    let mut router = Router::new(router_event_tx, runtime_dir);
     while let Some(cmd) = cmd_rx.recv().await {
         if !router.handle(cmd).await {
             break;
         }
     }
+
+    drop(cmd_tx);
+    drop(router);
+    drop(event_tx);
+    let _ = stdout_handle.await;
+    let _ = stdin_handle.await;
 
     Ok(())
 }
