@@ -3,3 +3,4 @@
 *.ipynb_checkpoints
 .claude/
 .superpowers/
+/test/scratch.ipynb

@@ -9,8 +9,8 @@
 # at the real ~/.local/share/nvim/lazy). The real ~/.config/nvim is never touched.
 #
 # Usage:
-#   ./test/test.sh                      # opens test/fixtures/simple.ipynb
-#   ./test/test.sh path/to/other.ipynb  # opens a specific notebook
+#   ./test/test.sh                      # fresh throwaway copy of the fixture
+#   ./test/test.sh path/to/other.ipynb  # opens a specific notebook as-is
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,7 +27,17 @@ sed "s|@@REPO@@|$REPO|g" "$REPO/test/repro-init.lua" > "$CONF_DIR/init.lua"
 echo "Building nvim-jupyter daemon..."
 bash "$REPO/build.sh"
 
-NB="${1:-$REPO/test/fixtures/simple.ipynb}"
+# No argument: copy the pristine fixture to a gitignored scratch file (fresh each
+# run) and open that, so editing/saving never dirties test/fixtures/simple.ipynb.
+# An explicit path argument is opened directly, untouched.
+if [ "$#" -ge 1 ]; then
+  NB="$1"
+else
+  NB="$REPO/test/scratch.ipynb"
+  cp -f "$REPO/test/fixtures/simple.ipynb" "$NB"
+  echo "Fresh scratch copy: $NB (reset from fixture each run)"
+fi
+
 echo ""
 echo "=== isolated test editor (NVIM_APPNAME=$NVIM_APPNAME) ==="
 echo "Opening: $NB"
