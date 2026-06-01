@@ -79,6 +79,31 @@ function M.append(bufnr, ns_output, last_row, new_lines, hl, max_output_lines)
   vim.api.nvim_buf_set_extmark(bufnr, ns_output, last_row, 0, opts)
 end
 
+-- Set output virt_lines at `row`, returning the new extmark id. If `prev_id`
+-- is given, that extmark is deleted first — so output can follow a cell whose
+-- last line moved (buffer edits, inserted cells) without leaving a stale copy.
+function M.set_at(bufnr, ns_output, row, text_lines, hl, max_output_lines, prev_id)
+  if prev_id then
+    pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_output, prev_id)
+  end
+  local truncated = M._truncate(text_lines, max_output_lines or 50)
+  local vl = build_virt_lines(truncated, hl or "NvimJupyterOutputText")
+  return vim.api.nvim_buf_set_extmark(bufnr, ns_output, row, 0, {
+    virt_lines = vl,
+    virt_lines_above = false,
+    hl_mode = "combine",
+  })
+end
+
+-- Remove every output extmark anchored within the [start_row, end_row) range.
+function M.clear_range(bufnr, ns_output, start_row, end_row)
+  local last = math.max(start_row, end_row - 1)
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns_output, { start_row, 0 }, { last, -1 }, {})
+  for _, m in ipairs(marks) do
+    vim.api.nvim_buf_del_extmark(bufnr, ns_output, m[1])
+  end
+end
+
 function M.clear(bufnr, ns_output, last_row)
   local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns_output, { last_row, 0 }, { last_row, 0 }, {})
   for _, m in ipairs(marks) do

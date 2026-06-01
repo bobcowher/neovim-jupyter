@@ -32,38 +32,62 @@ local function execute_cell(bufnr, on_done)
   local source = cells.get_source(bufnr, index)
   local msg_id = kernels.new_msg_id()
 
-  local _, end_row = cells.cell_range(bufnr, index)
-  local last_row = end_row - 1
   local s = cells._state[bufnr]
-  if s then output.clear_all_at_row(bufnr, s.ns_output, last_row) end
+
+  -- Track the running cell by its edit-stable separator mark id rather than a
+  -- fixed row. The cell's last line moves as it (or cells above it) are edited
+  -- while the kernel runs; recomputing keeps output anchored to the cell bottom.
+  local marks0 = cells.get_marks(bufnr)
+  local run_mark_id = marks0[index] and marks0[index].id
+
+  local function cell_last_row()
+    local marks = cells.get_marks(bufnr)
+    for i, m in ipairs(marks) do
+      if m.id == run_mark_id then
+        local _, end_row = cells.cell_range(bufnr, i)
+        if end_row then return end_row - 1 end
+      end
+    end
+    return nil
+  end
+
+  -- A single output extmark per run; we move it (delete+recreate by id) as the
+  -- cell bottom shifts, so there is never a stale copy left mid-buffer.
+  local out_id = nil
+  local output_lines = {}
+  local had_output = false
 
   if s then
-    output.set(bufnr, s.ns_output, last_row,
-      { "[*] running..." }, "NvimJupyterRunning", config.options.max_output_lines)
+    local sr, er = cells.cell_range(bufnr, index)
+    if sr then output.clear_range(bufnr, s.ns_output, sr, er) end
+    local row = cell_last_row()
+    if row then
+      out_id = output.set_at(bufnr, s.ns_output, row,
+        { "[*] running..." }, "NvimJupyterRunning", config.options.max_output_lines, nil)
+    end
   end
 
   kernels.set_busy(bufnr)
   daemon.send({ cmd = "execute", kernel_id = ks.kernel_id, msg_id = msg_id, code = source })
 
-  local output_lines = {}
-
-  local function append_output(new_lines, hl)
-    if s then
-      for _, l in ipairs(new_lines) do table.insert(output_lines, l) end
-      output.set(bufnr, s.ns_output, last_row, output_lines, hl, config.options.max_output_lines)
-    end
+  local function render(new_lines, hl)
+    if not s then return end
+    had_output = true
+    for _, l in ipairs(new_lines) do table.insert(output_lines, l) end
+    local row = cell_last_row()
+    if not row then return end
+    out_id = output.set_at(bufnr, s.ns_output, row, output_lines, hl,
+      config.options.max_output_lines, out_id)
   end
 
   daemon.on("stream", function(ev)
     if ev.msg_id ~= msg_id then return end
-    local lines = output._text_to_lines(ev.text)
-    append_output(lines, "NvimJupyterOutputText")
+    render(output._text_to_lines(ev.text), "NvimJupyterOutputText")
   end)
 
   daemon.on("execute_result", function(ev)
     if ev.msg_id ~= msg_id then return end
-    local lines = output._text_to_lines(ev.text)
-    append_output(lines, "NvimJupyterOutputText")
+    render(output._text_to_lines(ev.text), "NvimJupyterOutputText")
   end)
 
   daemon.on("execute_error", function(ev)
@@ -72,15 +96,26 @@ local function execute_cell(bufnr, on_done)
     for _, tb in ipairs(ev.traceback or {}) do
       table.insert(err_lines, output._strip_ansi(tb))
     end
-    append_output(err_lines, "NvimJupyterOutputError")
+    render(err_lines, "NvimJupyterOutputError")
   end)
 
   daemon.on("execute_done", function(ev)
     if ev.msg_id ~= msg_id then return end
     kernels.set_idle(bufnr)
+    -- Cell produced no output: remove the "[*] running..." indicator so it
+    -- never lingers (previously it stayed forever on no-output cells).
+    if not had_output and out_id and s then
+      pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, out_id)
+      out_id = nil
+    end
+    -- Resolve the cell's current index (it may have shifted) for the count.
     local marks = cells.get_marks(bufnr)
-    if marks[index] then
-      local meta = s and s.cell_meta[marks[index].id]
+    local cur_index = index
+    for i, m in ipairs(marks) do
+      if m.id == run_mark_id then cur_index = i break end
+    end
+    if marks[cur_index] then
+      local meta = s and s.cell_meta[marks[cur_index].id]
       if meta then
         meta.execution_count = ks.execution_count
         ks.execution_count = (ks.execution_count or 0) + 1
