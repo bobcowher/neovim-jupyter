@@ -25,7 +25,7 @@ end
 function M.init(bufnr, nb, lines, cell_starts)
   local ns_cells  = vim.api.nvim_create_namespace("nvim_jupyter_cells_" .. bufnr)
   local ns_output = vim.api.nvim_create_namespace("nvim_jupyter_output_" .. bufnr)
-  M._state[bufnr] = { ns_cells = ns_cells, ns_output = ns_output, cell_meta = {} }
+  M._state[bufnr] = { ns_cells = ns_cells, ns_output = ns_output, cell_meta = {}, cell_output = {} }
 
   vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
 
@@ -125,6 +125,12 @@ function M.delete_cell(bufnr, index)
   local marks = M.get_marks(bufnr)
   if not marks[index] then return end
   local start_row, end_row = M.cell_range(bufnr, index)
+  -- Drop any output owned by this cell so its extmark doesn't outlive it.
+  if s.cell_output and s.cell_output[marks[index].id] then
+    local e = s.cell_output[marks[index].id]
+    if e.ext then pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, e.ext) end
+    s.cell_output[marks[index].id] = nil
+  end
   vim.api.nvim_buf_del_extmark(bufnr, s.ns_cells, marks[index].id)
   s.cell_meta[marks[index].id] = nil
   vim.api.nvim_buf_set_lines(bufnr, start_row, end_row, false, {})

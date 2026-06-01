@@ -12,6 +12,70 @@ local function plugin_root()
   return vim.fn.fnamemodify(src, ":h:h:h")
 end
 
+-- ── Output ownership ───────────────────────────────────────────────────────
+-- Each cell owns at most one output block, stored on the buffer state keyed by
+-- the cell's (edit-stable) separator mark id. The block is rendered as a single
+-- ns_output extmark anchored to the cell's CURRENT last line, and re-anchored on
+-- every edit (see the TextChanged autocmd in open_notebook). This keeps output
+-- pinned to the bottom of its cell: typing/`o` always lands above it, re-runs
+-- replace rather than duplicate, and edits never strand it mid-buffer.
+
+local function cell_last_row_by_mark(bufnr, mark_id)
+  local marks = cells.get_marks(bufnr)
+  for i, m in ipairs(marks) do
+    if m.id == mark_id then
+      local _, end_row = cells.cell_range(bufnr, i)
+      if end_row then return end_row - 1 end
+    end
+  end
+  return nil
+end
+
+local function reanchor_output(bufnr, mark_id)
+  local s = cells._state[bufnr]
+  if not s or not s.cell_output then return end
+  local entry = s.cell_output[mark_id]
+  if not entry then return end
+  if entry.ext then
+    pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, entry.ext)
+    entry.ext = nil
+  end
+  if entry.lines and #entry.lines > 0 then
+    local row = cell_last_row_by_mark(bufnr, mark_id)
+    if row then
+      entry.ext = output.set_at(bufnr, s.ns_output, row, entry.lines, entry.hl,
+        config.options.max_output_lines, nil)
+    end
+  end
+end
+
+local function set_cell_output(bufnr, mark_id, lines, hl)
+  local s = cells._state[bufnr]
+  if not s then return end
+  s.cell_output = s.cell_output or {}
+  local prev = s.cell_output[mark_id]
+  s.cell_output[mark_id] = { lines = lines, hl = hl, ext = prev and prev.ext or nil }
+  reanchor_output(bufnr, mark_id)
+end
+
+local function clear_cell_output(bufnr, mark_id)
+  local s = cells._state[bufnr]
+  if not s or not s.cell_output then return end
+  local entry = s.cell_output[mark_id]
+  if entry and entry.ext then
+    pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, entry.ext)
+  end
+  s.cell_output[mark_id] = nil
+end
+
+local function reanchor_all_output(bufnr)
+  local s = cells._state[bufnr]
+  if not s or not s.cell_output then return end
+  for mark_id, _ in pairs(s.cell_output) do
+    reanchor_output(bufnr, mark_id)
+  end
+end
+
 local function execute_cell(bufnr, on_done)
   if not kernels.is_ready(bufnr) then
     local s = kernels.state(bufnr)
@@ -35,49 +99,24 @@ local function execute_cell(bufnr, on_done)
   local s = cells._state[bufnr]
 
   -- Track the running cell by its edit-stable separator mark id rather than a
-  -- fixed row. The cell's last line moves as it (or cells above it) are edited
-  -- while the kernel runs; recomputing keeps output anchored to the cell bottom.
+  -- fixed row, so its output follows it through edits and inserted cells.
   local marks0 = cells.get_marks(bufnr)
   local run_mark_id = marks0[index] and marks0[index].id
 
-  local function cell_last_row()
-    local marks = cells.get_marks(bufnr)
-    for i, m in ipairs(marks) do
-      if m.id == run_mark_id then
-        local _, end_row = cells.cell_range(bufnr, i)
-        if end_row then return end_row - 1 end
-      end
-    end
-    return nil
-  end
-
-  -- A single output extmark per run; we move it (delete+recreate by id) as the
-  -- cell bottom shifts, so there is never a stale copy left mid-buffer.
-  local out_id = nil
   local output_lines = {}
   local had_output = false
 
-  if s then
-    local sr, er = cells.cell_range(bufnr, index)
-    if sr then output.clear_range(bufnr, s.ns_output, sr, er) end
-    local row = cell_last_row()
-    if row then
-      out_id = output.set_at(bufnr, s.ns_output, row,
-        { "[*] running..." }, "NvimJupyterRunning", config.options.max_output_lines, nil)
-    end
-  end
+  -- Show the running indicator (replaces any prior output for this cell).
+  clear_cell_output(bufnr, run_mark_id)
+  set_cell_output(bufnr, run_mark_id, { "[*] running..." }, "NvimJupyterRunning")
 
   kernels.set_busy(bufnr)
   daemon.send({ cmd = "execute", kernel_id = ks.kernel_id, msg_id = msg_id, code = source })
 
   local function render(new_lines, hl)
-    if not s then return end
     had_output = true
     for _, l in ipairs(new_lines) do table.insert(output_lines, l) end
-    local row = cell_last_row()
-    if not row then return end
-    out_id = output.set_at(bufnr, s.ns_output, row, output_lines, hl,
-      config.options.max_output_lines, out_id)
+    set_cell_output(bufnr, run_mark_id, output_lines, hl)
   end
 
   daemon.on("stream", function(ev)
@@ -110,9 +149,8 @@ local function execute_cell(bufnr, on_done)
     kernels.set_idle(bufnr)
     -- Cell produced no output: remove the "[*] running..." indicator so it
     -- never lingers (previously it stayed forever on no-output cells).
-    if not had_output and out_id and s then
-      pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, out_id)
-      out_id = nil
+    if not had_output then
+      clear_cell_output(bufnr, run_mark_id)
     end
     -- Resolve the cell's current index (it may have shifted) for the count.
     local marks = cells.get_marks(bufnr)
@@ -148,6 +186,15 @@ local function open_notebook(path)
   vim.api.nvim_buf_set_name(bufnr, path)
 
   cells.init(bufnr, nb, lines, cell_starts)
+
+  -- Keep each cell's output pinned to its current last line as the buffer is
+  -- edited (typing, `o`, inserted/removed cells). Without this, output stays at
+  -- the row it was rendered at and drifts into the middle of the cell.
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+    buffer   = bufnr,
+    callback = function() reanchor_all_output(bufnr) end,
+    desc     = "nvim-jupyter: keep cell output anchored to the cell bottom",
+  })
 
   local kernel_name = (nb.metadata.kernelspec or {}).name
   local cwd = vim.fn.fnamemodify(path, ":h")
