@@ -174,7 +174,15 @@ async fn execute_loop(
     client: &mut KernelClient,
     event_tx: &mpsc::Sender<Event>,
 ) {
+    // Jupyter completion handshake: an execution is finished only when BOTH
+    // the shell `execute_reply` (carries the ok/error status) AND the iopub
+    // `status: idle` message have arrived. The idle status is guaranteed to be
+    // published *after* all output messages for this request, so waiting for it
+    // ensures we forward every stream/execute_result before ExecuteDone. Breaking
+    // on execute_reply alone races against — and drops — trailing iopub output.
     let mut shell_done = false;
+    let mut iopub_idle = false;
+    let mut reply_status = String::from("ok");
 
     loop {
         let iopub_result = timeout(Duration::from_millis(100), client.recv_iopub()).await;
@@ -187,6 +195,11 @@ async fn execute_loop(
                 if parent_id != msg_id { continue; }
 
                 match msg.msg_type() {
+                    "status" => {
+                        if msg.content.get("execution_state").and_then(|v| v.as_str()) == Some("idle") {
+                            iopub_idle = true;
+                        }
+                    }
                     "stream" => {
                         let name = msg.content["name"].as_str().unwrap_or("stdout").to_string();
                         let text = msg.content["text"].as_str().unwrap_or("").to_string();
@@ -227,10 +240,7 @@ async fn execute_loop(
             match shell_result {
                 Ok(Ok(msg)) => {
                     if msg.msg_type() == "execute_reply" {
-                        let status = msg.content["status"].as_str().unwrap_or("ok").to_string();
-                        let _ = event_tx.send(Event::ExecuteDone {
-                            kernel_id: kernel_id.into(), msg_id: msg_id.into(), status,
-                        }).await;
+                        reply_status = msg.content["status"].as_str().unwrap_or("ok").to_string();
                         shell_done = true;
                     }
                 }
@@ -239,6 +249,12 @@ async fn execute_loop(
             }
         }
 
-        if shell_done { break; }
+        // Only finish once all output is flushed (idle) AND the reply status is known.
+        if shell_done && iopub_idle {
+            let _ = event_tx.send(Event::ExecuteDone {
+                kernel_id: kernel_id.into(), msg_id: msg_id.into(), status: reply_status,
+            }).await;
+            break;
+        }
     }
 }

@@ -23,25 +23,41 @@ async fn execute_one_plus_one() {
     let msg_id = "test-msg-1";
     client.send_execute_request(msg_id, "1+1").await.expect("send failed");
 
+    // Completion requires BOTH the shell execute_reply and the iopub idle
+    // status. The idle status is published after all output, so draining until
+    // idle guarantees we see execute_result. Breaking on execute_reply alone
+    // races against the iopub output and can miss the result.
     let mut result_text = None;
-    let mut done = false;
-    for _ in 0..30 {
+    let mut reply_seen = false;
+    let mut idle_seen = false;
+    for _ in 0..50 {
         let iopub = timeout(Duration::from_millis(100), client.recv_iopub()).await;
         if let Ok(Ok(msg)) = iopub {
-            if msg.msg_type() == "execute_result" {
-                result_text = nvim_jupyter::client::KernelClient::extract_text(&msg);
+            match msg.msg_type() {
+                "execute_result" => {
+                    result_text = nvim_jupyter::client::KernelClient::extract_text(&msg);
+                }
+                "status" => {
+                    if msg.content.get("execution_state").and_then(|v| v.as_str()) == Some("idle") {
+                        idle_seen = true;
+                    }
+                }
+                _ => {}
             }
         }
 
-        let shell = timeout(Duration::from_millis(10), client.recv_shell()).await;
-        if let Ok(Ok(msg)) = shell {
-            if msg.msg_type() == "execute_reply" {
-                done = true;
+        if !reply_seen {
+            let shell = timeout(Duration::from_millis(10), client.recv_shell()).await;
+            if let Ok(Ok(msg)) = shell {
+                if msg.msg_type() == "execute_reply" {
+                    reply_seen = true;
+                }
             }
         }
 
-        if done { break; }
+        if reply_seen && idle_seen { break; }
     }
+    let done = reply_seen && idle_seen;
 
     proc.kill().await;
 

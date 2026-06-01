@@ -40,12 +40,16 @@ impl JupyterMessage {
     }
 }
 
-pub fn sign(key_hex: &str, header: &[u8], parent_header: &[u8], metadata: &[u8], content: &[u8]) -> String {
-    let key = hex::decode(key_hex).unwrap_or_default();
+pub fn sign(key: &str, header: &[u8], parent_header: &[u8], metadata: &[u8], content: &[u8]) -> String {
+    // The Jupyter connection-file `key` is used as the HMAC key's *raw UTF-8
+    // bytes* — NOT hex-decoded — even though it looks like hex. jupyter_client
+    // does `cfg["key"].encode()`. Hex-decoding here yields a different key than
+    // the kernel uses, so every signed message fails verification and the
+    // kernel silently drops it.
     if key.is_empty() {
         return String::new();
     }
-    let mut mac = HmacSha256::new_from_slice(&key).expect("HMAC accepts any key size");
+    let mut mac = HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC accepts any key size");
     mac.update(header);
     mac.update(parent_header);
     mac.update(metadata);
