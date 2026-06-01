@@ -1,7 +1,9 @@
 local M = {}
 
 function M._strip_ansi(s)
-  return s:gsub("\27%[[%d;]*m", "")
+  -- Parenthesize: gsub returns (result, count); without this the count leaks as
+  -- a second return value and breaks callers like table.insert(t, strip(x)).
+  return (s:gsub("\27%[[%d;]*m", ""))
 end
 
 function M._text_to_lines(text)
