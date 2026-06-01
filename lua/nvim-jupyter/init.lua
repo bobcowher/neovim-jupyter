@@ -94,7 +94,13 @@ local function execute_cell(bufnr, on_done)
     if ev.msg_id ~= msg_id then return end
     local err_lines = { ev.ename .. ": " .. ev.evalue }
     for _, tb in ipairs(ev.traceback or {}) do
-      table.insert(err_lines, output._strip_ansi(tb))
+      -- A traceback frame is one string with embedded \n (and sometimes \r).
+      -- Virtual text can't hold newlines — they'd render as ^@ — so strip ANSI
+      -- then split into individual display lines.
+      local clean = output._strip_ansi(tb):gsub("\r", "")
+      for _, line in ipairs(output._text_to_lines(clean)) do
+        table.insert(err_lines, line)
+      end
     end
     render(err_lines, "NvimJupyterOutputError")
   end)
