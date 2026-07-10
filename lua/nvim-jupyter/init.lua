@@ -103,6 +103,12 @@ local function execute_cell(bufnr, on_done)
   local marks0 = cells.get_marks(bufnr)
   local run_mark_id = marks0[index] and marks0[index].id
 
+  if cell_info.mark.meta and cell_info.mark.meta.cell_type == "markdown" then
+    clear_cell_output(bufnr, run_mark_id)
+    if on_done then on_done(index) end
+    return
+  end
+
   local output_lines = {}
   local had_output = false
 
