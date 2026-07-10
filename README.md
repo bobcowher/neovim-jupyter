@@ -9,6 +9,10 @@ A Neovim plugin that provides asynchronous Jupyter kernel integration. It uses a
 - **Asynchronous Execution**: Communicates with kernels seamlessly without blocking the editor.
 - **Inline Output**: Code cell outputs and errors are rendered directly below the cell using Neovim extmarks.
 
+## Requirements
+
+**Important:** This plugin renders inline output using modern terminal features and currently only works on **Kitty protocol compatible terminals** (such as [Kitty](https://sw.kovidgoyal.net/kitty/) or [Ghostty](https://ghostty.org/)).
+
 ## Installation & Setup
 
 1. Install the plugin using your preferred package manager (e.g., `lazy.nvim`, `packer.nvim`).
