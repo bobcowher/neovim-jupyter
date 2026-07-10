@@ -175,23 +175,51 @@ local function execute_cell(bufnr, on_done)
   end)
 end
 
-local function update_syntax_regions(bufnr)
-  vim.api.nvim_buf_call(bufnr, function()
-    vim.cmd([[silent! syntax clear nvim_jupyter_markdown]])
-    local marks = cells.get_marks(bufnr)
-    for i, mark in ipairs(marks) do
-      if mark.meta and mark.meta.cell_type == "markdown" then
-        local start_row, end_row = cells.cell_range(bufnr, i)
-        local start_line = start_row + 1
-        local end_line = end_row
-        if start_line <= end_line then
-          vim.cmd(string.format([[
-            syntax region nvim_jupyter_markdown start=/\%%%dl/ end=/\%%%dl/ contains=@Markdown keepend
-          ]], start_line, end_line + 1))
+local ns_md = vim.api.nvim_create_namespace("nvim_jupyter_markdown")
+
+local function render_markdown_cells(bufnr)
+  pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns_md, 0, -1)
+  
+  if vim.api.nvim_get_mode().mode:sub(1,1) == "i" then return end
+
+  local marks = cells.get_marks(bufnr)
+  for i, mark in ipairs(marks) do
+    if mark.meta and mark.meta.cell_type == "markdown" then
+      local start_row, end_row = cells.cell_range(bufnr, i)
+      local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row, false)
+      
+      for r, line in ipairs(lines) do
+        local row = start_row + r - 1
+        
+        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, 0, {
+          end_row = row,
+          end_col = #line,
+          hl_group = "Comment",
+          priority = 100,
+          strict = false,
+        })
+        
+        local h_level, title = line:match("^(#+)%s*(.*)$")
+        if h_level and title then
+          pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, 0, {
+            end_row = row,
+            end_col = #h_level + 1,
+            virt_text = { { string.rep(" ", #h_level + 1), "Comment" } },
+            virt_text_pos = "overlay",
+            priority = 101,
+            strict = false,
+          })
+          pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, #h_level + 1, {
+            end_row = row,
+            end_col = #line,
+            hl_group = "Title",
+            priority = 101,
+            strict = false,
+          })
         end
       end
     end
-  end)
+  end
 end
 
 local function open_notebook(path)
@@ -210,33 +238,31 @@ local function open_notebook(path)
   vim.bo[bufnr].swapfile = false
   vim.api.nvim_buf_set_name(bufnr, path)
 
-  vim.api.nvim_buf_call(bufnr, function()
-    vim.cmd([[
-      try
-        unlet! b:current_syntax
-        syntax include @Markdown syntax/markdown.vim
-      catch
-      endtry
-    ]])
-  end)
-  vim.opt_local.conceallevel = 2
-  vim.opt_local.concealcursor = "nc"
+  -- Markdown rendering is handled by extmarks now
 
   cells.init(bufnr, nb, lines, cell_starts)
 
   -- Keep each cell's output pinned to its current last line as the buffer is
   -- edited (typing, `o`, inserted/removed cells). Without this, output stays at
   -- the row it was rendered at and drifts into the middle of the cell.
-  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave" }, {
     buffer   = bufnr,
     callback = function()
       reanchor_all_output(bufnr)
-      update_syntax_regions(bufnr)
+      render_markdown_cells(bufnr)
     end,
-    desc     = "nvim-jupyter: keep cell output anchored to the cell bottom",
+    desc     = "nvim-jupyter: render markdown and keep cell output anchored",
+  })
+  
+  vim.api.nvim_create_autocmd({ "InsertEnter" }, {
+    buffer = bufnr,
+    callback = function()
+      pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns_md, 0, -1)
+    end,
+    desc     = "nvim-jupyter: unrender markdown for raw editing",
   })
 
-  update_syntax_regions(bufnr)
+  render_markdown_cells(bufnr)
 
   local kernel_name = (nb.metadata.kernelspec or {}).name
   local cwd = vim.fn.fnamemodify(path, ":h")
@@ -430,7 +456,7 @@ function M.setup(opts)
     local info = cells.cell_at_row(bufnr, row)
     if info then
       cells.toggle_cell_type(bufnr, info.index)
-      update_syntax_regions(bufnr)
+      render_markdown_cells(bufnr)
     end
   end, { desc = "Toggle cell type code/markdown" })
 
