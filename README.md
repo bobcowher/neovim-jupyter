@@ -50,7 +50,7 @@ When you open an `.ipynb` file, the plugin automatically activates.
 
 If you rely on the default configuration, the following keybindings are set for you:
 
-- `<C-CR>` (Control + Enter): Execute cell in place
+- `<C-CR>` (Control + Enter): Execute cell in place *(Note: Ghostty captures `ctrl+enter` by default to toggle the header. Use `shift+enter` or unbind `ctrl+enter` in Ghostty).*
 - `<S-CR>` (Shift + Enter): Execute cell and advance
 - `<M-CR>` (Alt/Option + Enter): Execute cell and insert below
 - `]c`: Next cell
