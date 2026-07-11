@@ -464,8 +464,18 @@ function apply_keymaps(bufnr)
       if not cell_info then return end
       local prev_marks = cells.get_marks(bufnr)
       local prev = prev_marks[cell_info.index - 1]
-      if prev then vim.api.nvim_win_set_cursor(0, { prev.row + 1, 0 }) end
+      if prev then pcall(vim.api.nvim_win_set_cursor, 0, { prev.row + 1, 0 }) end
     end, vim.tbl_extend("force", o, { desc = "Previous cell" }))
+  end
+
+  if km.delete_cell ~= false then
+    vim.keymap.set("n", km.delete_cell, function()
+      local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+      local cell_info = cells.cell_at_row(bufnr, cursor_row)
+      if not cell_info then return end
+      cells.delete_cell(bufnr, cell_info.index)
+      vim.notify("nvim-jupyter: cell deleted", vim.log.levels.INFO)
+    end, vim.tbl_extend("force", o, { desc = "Delete cell" }))
   end
 end
 

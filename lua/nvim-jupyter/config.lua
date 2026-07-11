@@ -8,6 +8,7 @@ M.defaults = {
     execute_insert   = "<M-CR>",
     next_cell        = "]c",
     prev_cell        = "[c",
+    delete_cell      = "<space>d",
   },
   max_output_lines = 50,
   runtime_dir = nil,
