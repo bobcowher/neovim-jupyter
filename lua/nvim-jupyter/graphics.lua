@@ -55,6 +55,11 @@ function M.clear_all()
 end
 
 function M.show_image(bufnr, anchor_row, b64_data)
+  if #b64_data > 3000000 then
+    vim.notify("nvim-jupyter: Image is too large to render inline (over 3MB). Use NvimGfx to view.", vim.log.levels.WARN)
+    return nil
+  end
+
   -- 20 blank lines to make room for the image
   local height_lines = 20
   local vl = {}
@@ -141,7 +146,7 @@ end
 
 function M.setup()
   local aug = vim.api.nvim_create_augroup("NvimJupyterGraphics", { clear = true })
-  vim.api.nvim_create_autocmd({"CursorMoved", "WinScrolled", "WinEnter", "BufEnter"}, {
+  vim.api.nvim_create_autocmd({"CursorMoved", "WinScrolled", "WinEnter", "BufEnter", "VimResized"}, {
     group = aug,
     callback = function()
       vim.schedule(M.redraw)
