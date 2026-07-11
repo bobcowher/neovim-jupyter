@@ -231,6 +231,14 @@ local function open_notebook(path)
 
   local lines, cell_starts = notebook.to_buffer_lines(nb)
 
+  -- Workaround for Neovim's missing virt_lines_above on row 0 bug:
+  -- Inject a blank row at the very top so the first cell starts at row 1.
+  -- This blank line is automatically stripped out when saving.
+  table.insert(lines, 1, "")
+  for i = 1, #cell_starts do
+    cell_starts[i] = cell_starts[i] + 1
+  end
+
   local bufnr = vim.api.nvim_get_current_buf()
   vim.bo[bufnr].buftype  = "acwrite"
   vim.bo[bufnr].filetype = "python"
