@@ -1,8 +1,9 @@
 local M = {}
 
 local state = {
-  job_id   = nil,
-  handlers = {},
+  job_id     = nil,
+  handlers   = {},
+  stdout_buf = "",
 }
 
 local function binary_path()
@@ -22,13 +23,20 @@ local function dispatch(event)
 end
 
 local function on_stdout(_, data, _)
-  for _, line in ipairs(data) do
+  if not data or #data == 0 then return end
+  
+  data[1] = state.stdout_buf .. data[1]
+  state.stdout_buf = data[#data]
+  
+  for i = 1, #data - 1 do
+    local line = data[i]
     if line ~= "" then
       local ok, event = pcall(vim.json.decode, line)
       if ok and type(event) == "table" and event.event then
         dispatch(event)
       else
-        vim.notify("nvim-jupyter: malformed event: " .. line, vim.log.levels.WARN)
+        local snippet = string.sub(line, 1, 150)
+        vim.notify("nvim-jupyter: malformed event: " .. snippet .. "...", vim.log.levels.WARN)
       end
     end
   end
@@ -39,6 +47,7 @@ local function on_exit(_, code, _)
     vim.notify("nvim-jupyter: daemon exited with code " .. code, vim.log.levels.WARN)
   end
   state.job_id = nil
+  state.stdout_buf = ""
   dispatch({ event = "daemon_died", code = code })
 end
 
