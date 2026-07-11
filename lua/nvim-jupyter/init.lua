@@ -626,6 +626,19 @@ function M.setup(opts)
     vim.notify("nvim-jupyter kernel: " .. status, vim.log.levels.INFO)
   end, { desc = "Print kernel status" })
 
+  local command_aliases = {
+    JupyterRun = "JupyterExecute",
+    JupyterRunAndAdvance = "JupyterExecuteAndAdvance",
+    JupyterRunAndInsert = "JupyterExecuteAndInsert",
+    JupyterRunAll = "JupyterExecuteAll",
+    JupyterRunAbove = "JupyterExecuteAbove",
+    JupyterRunBelow = "JupyterExecuteBelow",
+    JupyterKernelRestart = "JupyterRestartKernel",
+  }
+  for alias, target in pairs(command_aliases) do
+    vim.api.nvim_create_user_command(alias, function() vim.cmd(target) end, { desc = "Alias for " .. target })
+  end
+
   vim.api.nvim_create_user_command("JupyterShowOutput", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local row = vim.api.nvim_win_get_cursor(0)[1] - 1
