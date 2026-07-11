@@ -143,12 +143,15 @@ function M.toggle_cell_type(bufnr, index)
   if not marks[index] then return end
   local meta = s.cell_meta[marks[index].id]
   meta.cell_type = meta.cell_type == "code" and "markdown" or "code"
-  vim.api.nvim_buf_set_extmark(bufnr, s.ns_cells, marks[index].row, 0, {
-    id = marks[index].id,
+  pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_cells, marks[index].id)
+  local new_id = vim.api.nvim_buf_set_extmark(bufnr, s.ns_cells, marks[index].row, 0, {
     virt_lines = { sep_virt_line(meta.cell_type) },
     virt_lines_above = true,
     hl_mode = "combine",
   })
+  s.cell_meta[new_id] = meta
+  s.cell_meta[marks[index].id] = nil
+  vim.cmd("redraw!")
 end
 
 function M.to_notebook_cells(bufnr)

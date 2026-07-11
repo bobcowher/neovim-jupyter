@@ -195,7 +195,7 @@ local function render_markdown_cells(bufnr)
           end_row = row,
           end_col = #line,
           hl_group = "Comment",
-          priority = 100,
+          priority = 200,
           strict = false,
         })
         
@@ -204,16 +204,15 @@ local function render_markdown_cells(bufnr)
           pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, 0, {
             end_row = row,
             end_col = #h_level + 1,
-            virt_text = { { string.rep(" ", #h_level + 1), "Comment" } },
-            virt_text_pos = "overlay",
-            priority = 101,
+            conceal = "",
+            priority = 201,
             strict = false,
           })
           pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, #h_level + 1, {
             end_row = row,
             end_col = #line,
             hl_group = "Title",
-            priority = 101,
+            priority = 201,
             strict = false,
           })
         end
@@ -239,6 +238,8 @@ local function open_notebook(path)
   vim.api.nvim_buf_set_name(bufnr, path)
 
   -- Markdown rendering is handled by extmarks now
+  vim.opt_local.conceallevel = 2
+  vim.opt_local.concealcursor = "nc"
 
   cells.init(bufnr, nb, lines, cell_starts)
 
