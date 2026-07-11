@@ -50,17 +50,30 @@ local function register_handlers(bufnr, kernel_id)
 
   daemon.on("kernels_list", function(ev)
     if s.status ~= "picking" then return end
-    local names = {}
-    for _, k in ipairs(ev.kernels) do
-      table.insert(names, k.name .. " — " .. k.display_name)
+    local current_idx = nil
+    for i, k in ipairs(ev.kernels) do
+      local display = k.name .. " — " .. k.display_name
+      if s.picking_name == k.name then
+        display = "★ " .. display
+        current_idx = i
+      end
+      table.insert(names, display)
+    end
+    if current_idx and current_idx > 1 then
+      local current = table.remove(names, current_idx)
+      table.insert(names, 1, current)
     end
     if #names == 0 then
       vim.notify("nvim-jupyter: no kernels found — run: pip install ipykernel", vim.log.levels.ERROR)
       return
     end
-    require("nvim-jupyter.ui").select(names, { prompt = "Select Jupyter kernel:" }, function(choice)
-      if not choice then return end
-      local chosen_name = choice:match("^([^%s]+)")
+    require("nvim-jupyter.ui").select(names, { prompt = "Select Jupyter kernel (Current Buffer Scope):" }, function(choice)
+      if not choice then
+        -- User aborted, kernel remains stopped since we killed it before picking
+        return
+      end
+      local choice_clean = choice:gsub("^★%s*", "")
+      local chosen_name = choice_clean:match("^([^%s]+)")
       s.kernel_name = chosen_name
 
       local chosen_spec
@@ -99,13 +112,14 @@ local function register_handlers(bufnr, kernel_id)
   end)
 end
 
-function M.start(bufnr, kernel_name, cwd)
+function M.start(bufnr, kernel_name, cwd, old_name)
   if not daemon.ensure_started() then return end
 
   local kernel_id = new_uuid()
   M._state[bufnr] = {
     kernel_id       = kernel_id,
     kernel_name     = kernel_name,
+    picking_name    = old_name,
     status          = "starting",
     execution_count = 0,
     cwd             = cwd or vim.fn.getcwd(),
@@ -153,9 +167,9 @@ end
 
 function M.pick_kernel(bufnr)
   local s = M._state[bufnr]
-  if not s then return end
-  M.stop(bufnr)
-  M.start(bufnr, nil, s.cwd)
+  local old_name = s and s.kernel_name or nil
+  if s then M.stop(bufnr) end
+  M.start(bufnr, nil, s and s.cwd or nil, old_name)
 end
 
 function M.new_msg_id()
