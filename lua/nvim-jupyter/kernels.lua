@@ -3,6 +3,11 @@ local daemon = require("nvim-jupyter.daemon")
 local M = {}
 
 M._state = {}
+M._callbacks = {}
+
+function M.register_callback(msg_id, cb)
+  M._callbacks[msg_id] = cb
+end
 
 local function new_uuid()
   local handle = io.popen("uuidgen")
@@ -22,6 +27,29 @@ end
 
 local function register_handlers(bufnr, kernel_id)
   local s = M._state[bufnr]
+
+  daemon.on("execute_done", function(ev)
+    if ev.kernel_id ~= kernel_id then return end
+    set_status(bufnr, kernel_id, "idle")
+  end)
+
+  daemon.on("complete_reply", function(ev)
+    if ev.kernel_id ~= kernel_id then return end
+    local cb = M._callbacks[ev.msg_id]
+    if cb then
+      cb(ev)
+      M._callbacks[ev.msg_id] = nil
+    end
+  end)
+
+  daemon.on("inspect_reply", function(ev)
+    if ev.kernel_id ~= kernel_id then return end
+    local cb = M._callbacks[ev.msg_id]
+    if cb then
+      cb(ev)
+      M._callbacks[ev.msg_id] = nil
+    end
+  end)
 
   daemon.on("kernel_started", function(ev)
     if ev.kernel_id ~= kernel_id then return end
@@ -184,6 +212,18 @@ end
 function M.is_ready(bufnr)
   local s = M._state[bufnr]
   return s and (s.status == "idle" or s.status == "busy")
+end
+
+function M.complete(bufnr, msg_id, code, cursor_pos)
+  local s = M._state[bufnr]
+  if not s then return end
+  daemon.send({ cmd = "complete", kernel_id = s.kernel_id, msg_id = msg_id, code = code, cursor_pos = cursor_pos })
+end
+
+function M.inspect(bufnr, msg_id, code, cursor_pos, detail_level)
+  local s = M._state[bufnr]
+  if not s then return end
+  daemon.send({ cmd = "inspect", kernel_id = s.kernel_id, msg_id = msg_id, code = code, cursor_pos = cursor_pos, detail_level = detail_level or 0 })
 end
 
 function M.set_busy(bufnr)

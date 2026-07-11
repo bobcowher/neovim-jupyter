@@ -8,6 +8,8 @@ pub enum Command {
     RestartKernel { kernel_id: String },
     InterruptKernel { kernel_id: String },
     Execute { kernel_id: String, msg_id: String, code: String },
+    Complete { kernel_id: String, msg_id: String, code: String, cursor_pos: u32 },
+    Inspect { kernel_id: String, msg_id: String, code: String, cursor_pos: u32, detail_level: u32 },
     ListKernels,
     Quit,
 }
@@ -23,6 +25,8 @@ pub enum Event {
     ExecuteResult { kernel_id: String, msg_id: String, execution_count: u32, text: String, image_png: Option<String> },
     ExecuteError { kernel_id: String, msg_id: String, ename: String, evalue: String, traceback: Vec<String> },
     ExecuteDone { kernel_id: String, msg_id: String, status: String },
+    CompleteReply { kernel_id: String, msg_id: String, matches: Vec<String>, cursor_start: u32, cursor_end: u32 },
+    InspectReply { kernel_id: String, msg_id: String, found: bool, text: String },
     Error { msg: String },
 }
 

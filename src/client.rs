@@ -68,6 +68,33 @@ impl KernelClient {
         Ok(())
     }
 
+    pub async fn send_complete_request(&mut self, msg_id: &str, code: &str, cursor_pos: u32) -> Result<()> {
+        let content = json!({
+            "code": code,
+            "cursor_pos": cursor_pos,
+        });
+        let mut msg = JupyterMessage::new("complete_request", &self.session, content);
+        msg.header["msg_id"] = serde_json::Value::String(msg_id.to_string());
+        let frames = wire::encode(&msg, &self.key);
+        let zmq_msg = ZmqMessage::try_from(frames).map_err(|_| anyhow!("empty msg"))?;
+        self.shell.send(zmq_msg).await?;
+        Ok(())
+    }
+
+    pub async fn send_inspect_request(&mut self, msg_id: &str, code: &str, cursor_pos: u32, detail_level: u32) -> Result<()> {
+        let content = json!({
+            "code": code,
+            "cursor_pos": cursor_pos,
+            "detail_level": detail_level,
+        });
+        let mut msg = JupyterMessage::new("inspect_request", &self.session, content);
+        msg.header["msg_id"] = serde_json::Value::String(msg_id.to_string());
+        let frames = wire::encode(&msg, &self.key);
+        let zmq_msg = ZmqMessage::try_from(frames).map_err(|_| anyhow!("empty msg"))?;
+        self.shell.send(zmq_msg).await?;
+        Ok(())
+    }
+
     pub async fn recv_iopub(&mut self) -> Result<JupyterMessage> {
         let zmq_msg: ZmqMessage = self.iopub.recv().await?;
         let frames: Vec<Bytes> = zmq_msg.into_vec();

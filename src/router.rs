@@ -10,6 +10,8 @@ use crate::protocol::{Command, Event, KernelSpec};
 
 enum KernelCmd {
     Execute { msg_id: String, code: String },
+    Complete { msg_id: String, code: String, cursor_pos: u32 },
+    Inspect { msg_id: String, code: String, cursor_pos: u32, detail_level: u32 },
     Interrupt,
     Shutdown { restart: bool },
 }
@@ -90,6 +92,26 @@ impl Router {
                     }).await;
                 }
             }
+
+            Command::Complete { kernel_id, msg_id, code, cursor_pos } => {
+                if let Some(handle) = self.kernels.get(&kernel_id) {
+                    let _ = handle.tx.send(KernelCmd::Complete { msg_id, code, cursor_pos }).await;
+                } else {
+                    let _ = self.event_tx.send(Event::Error {
+                        msg: format!("no kernel for id {}", kernel_id),
+                    }).await;
+                }
+            }
+
+            Command::Inspect { kernel_id, msg_id, code, cursor_pos, detail_level } => {
+                if let Some(handle) = self.kernels.get(&kernel_id) {
+                    let _ = handle.tx.send(KernelCmd::Inspect { msg_id, code, cursor_pos, detail_level }).await;
+                } else {
+                    let _ = self.event_tx.send(Event::Error {
+                        msg: format!("no kernel for id {}", kernel_id),
+                    }).await;
+                }
+            }
         }
         true
     }
@@ -151,6 +173,20 @@ async fn run_kernel_task(
                     continue;
                 }
                 execute_loop(&kernel_id, &msg_id, &mut client, &event_tx).await;
+            }
+            KernelCmd::Complete { msg_id, code, cursor_pos } => {
+                if let Err(e) = client.send_complete_request(&msg_id, &code, cursor_pos).await {
+                    let _ = event_tx.send(Event::Error { msg: e.to_string() }).await;
+                    continue;
+                }
+                complete_loop(&kernel_id, &msg_id, &mut client, &event_tx).await;
+            }
+            KernelCmd::Inspect { msg_id, code, cursor_pos, detail_level } => {
+                if let Err(e) = client.send_inspect_request(&msg_id, &code, cursor_pos, detail_level).await {
+                    let _ = event_tx.send(Event::Error { msg: e.to_string() }).await;
+                    continue;
+                }
+                inspect_loop(&kernel_id, &msg_id, &mut client, &event_tx).await;
             }
             KernelCmd::Interrupt => {
                 proc.interrupt().await;
@@ -260,3 +296,69 @@ async fn execute_loop(
         }
     }
 }
+
+async fn complete_loop(
+    kernel_id: &str,
+    msg_id: &str,
+    client: &mut KernelClient,
+    event_tx: &mpsc::Sender<Event>,
+) {
+    loop {
+        let shell_result = timeout(Duration::from_millis(100), client.recv_shell()).await;
+        match shell_result {
+            Ok(Ok(msg)) => {
+                if msg.msg_type() == "complete_reply" {
+                    let matches = msg.content["matches"]
+                        .as_array()
+                        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                        .unwrap_or_default();
+                    let cursor_start = msg.content["cursor_start"].as_u64().unwrap_or(0) as u32;
+                    let cursor_end = msg.content["cursor_end"].as_u64().unwrap_or(0) as u32;
+                    let _ = event_tx.send(Event::CompleteReply {
+                        kernel_id: kernel_id.into(), msg_id: msg_id.into(),
+                        matches, cursor_start, cursor_end,
+                    }).await;
+                    break;
+                }
+            }
+            Ok(Err(_)) => break,
+            Err(_) => {}
+        }
+        // Drain iopub to prevent buffer bloat
+        while let Ok(Ok(_)) = timeout(Duration::from_millis(0), client.recv_iopub()).await {}
+    }
+}
+
+async fn inspect_loop(
+    kernel_id: &str,
+    msg_id: &str,
+    client: &mut KernelClient,
+    event_tx: &mpsc::Sender<Event>,
+) {
+    loop {
+        let shell_result = timeout(Duration::from_millis(100), client.recv_shell()).await;
+        match shell_result {
+            Ok(Ok(msg)) => {
+                if msg.msg_type() == "inspect_reply" {
+                    let found = msg.content["found"].as_bool().unwrap_or(false);
+                    let mut text = String::new();
+                    if found {
+                        if let Some(data) = msg.content.get("data") {
+                            text = data.get("text/plain").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        }
+                    }
+                    let _ = event_tx.send(Event::InspectReply {
+                        kernel_id: kernel_id.into(), msg_id: msg_id.into(),
+                        found, text,
+                    }).await;
+                    break;
+                }
+            }
+            Ok(Err(_)) => break,
+            Err(_) => {}
+        }
+        // Drain iopub
+        while let Ok(Ok(_)) = timeout(Duration::from_millis(0), client.recv_iopub()).await {}
+    }
+}
+

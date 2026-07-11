@@ -604,6 +604,23 @@ function M.setup(opts)
     end
   end, { desc = "Toggle cell type code/markdown" })
 
+  vim.api.nvim_create_user_command("JupyterClearOutput", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local info = cells.cell_at_row(bufnr, row)
+    if info then
+      clear_cell_output(bufnr, info.id)
+    end
+  end, { desc = "Clear output for the current cell" })
+
+  vim.api.nvim_create_user_command("JupyterClearAllOutputs", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local marks = cells.get_marks(bufnr)
+    for _, mark in ipairs(marks) do
+      clear_cell_output(bufnr, mark.id)
+    end
+  end, { desc = "Clear all outputs in the buffer" })
+
   vim.api.nvim_create_user_command("JupyterKernel", function()
     local bufnr = vim.api.nvim_get_current_buf()
     kernels.pick_kernel(bufnr)
@@ -618,6 +635,10 @@ function M.setup(opts)
     local bufnr = vim.api.nvim_get_current_buf()
     kernels.interrupt(bufnr)
   end, { desc = "Interrupt kernel (SIGINT)" })
+
+  vim.api.nvim_create_user_command("JupyterInspect", function()
+    require("nvim-jupyter.lsp").hover()
+  end, { desc = "Hover inspection for symbol under cursor" })
 
   vim.api.nvim_create_user_command("JupyterKernelStatus", function()
     local bufnr = vim.api.nvim_get_current_buf()
@@ -634,6 +655,8 @@ function M.setup(opts)
     JupyterRunAbove = "JupyterExecuteAbove",
     JupyterRunBelow = "JupyterExecuteBelow",
     JupyterKernelRestart = "JupyterRestartKernel",
+    JupyterClearAll = "JupyterClearAllOutputs",
+    JupyterHover = "JupyterInspect",
   }
   for alias, target in pairs(command_aliases) do
     vim.api.nvim_create_user_command(alias, function() vim.cmd(target) end, { desc = "Alias for " .. target })
