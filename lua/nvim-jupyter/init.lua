@@ -97,7 +97,7 @@ local function reanchor_all_output(bufnr)
   end
 end
 
-local function execute_cell(bufnr, on_done)
+local function execute_cell(bufnr, target_index)
   if not kernels.is_ready(bufnr) then
     local s = kernels.state(bufnr)
     local st = s and s.status or "not started"
@@ -106,14 +106,16 @@ local function execute_cell(bufnr, on_done)
   end
 
   local ks = kernels.state(bufnr)
-  local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
-  local cell_info = cells.cell_at_row(bufnr, cursor_row)
-  if not cell_info then
-    vim.notify("nvim-jupyter: cursor not in a cell", vim.log.levels.WARN)
-    return
+  local index = target_index
+  if not index then
+    local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local cell_info = cells.cell_at_row(bufnr, cursor_row)
+    if not cell_info then
+      vim.notify("nvim-jupyter: cursor not in a cell", vim.log.levels.WARN)
+      return
+    end
+    index = cell_info.index
   end
-
-  local index = cell_info.index
   local source = cells.get_source(bufnr, index)
   local msg_id = kernels.new_msg_id()
 
@@ -126,7 +128,6 @@ local function execute_cell(bufnr, on_done)
 
   if cell_info.mark.meta and cell_info.mark.meta.cell_type == "markdown" then
     clear_cell_output(bufnr, run_mark_id)
-    if on_done then on_done(index) end
     return
   end
 
@@ -200,9 +201,6 @@ local function execute_cell(bufnr, on_done)
     })
     local err_lines = { ev.ename .. ": " .. ev.evalue }
     for _, tb in ipairs(ev.traceback or {}) do
-      -- A traceback frame is one string with embedded \n (and sometimes \r).
-      -- Virtual text can't hold newlines — they'd render as ^@ — so strip ANSI
-      -- then split into individual display lines.
       local clean = output._strip_ansi(tb):gsub("\r", "")
       for _, line in ipairs(output._text_to_lines(clean)) do
         table.insert(err_lines, line)
@@ -214,12 +212,9 @@ local function execute_cell(bufnr, on_done)
   daemon.on("execute_done", function(ev)
     if ev.msg_id ~= msg_id then return end
     kernels.set_idle(bufnr)
-    -- Cell produced no output: remove the "[*] running..." indicator so it
-    -- never lingers (previously it stayed forever on no-output cells).
     if not had_output then
       clear_cell_output(bufnr, run_mark_id)
     end
-    -- Resolve the cell's current index (it may have shifted) for the count.
     local marks = cells.get_marks(bufnr)
     local cur_index = index
     for i, m in ipairs(marks) do
@@ -233,7 +228,7 @@ local function execute_cell(bufnr, on_done)
         ks.execution_count = (ks.execution_count or 0) + 1
       end
     end
-    if on_done then on_done(index) end
+
   end)
 end
 
@@ -495,6 +490,17 @@ function apply_keymaps(bufnr)
       vim.notify("nvim-jupyter: cell deleted", vim.log.levels.INFO)
     end, vim.tbl_extend("force", o, { desc = "Delete cell" }))
   end
+
+  if km.toggle_cell_type ~= false then
+    vim.keymap.set("n", km.toggle_cell_type, function()
+      local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+      local cell_info = cells.cell_at_row(bufnr, cursor_row)
+      if not cell_info then return end
+      cells.toggle_cell_type(bufnr, cell_info.index)
+      render_markdown_cells(bufnr)
+      vim.notify("nvim-jupyter: toggled cell type", vim.log.levels.INFO)
+    end, vim.tbl_extend("force", o, { desc = "Toggle cell type code/markdown" }))
+  end
 end
 
 function M.setup(opts)
@@ -563,15 +569,32 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("JupyterExecuteAll", function()
     local bufnr = vim.api.nvim_get_current_buf()
-    local mark_count = #cells.get_marks(bufnr)
-    local function run_next(i)
-      if i > mark_count then return end
-      local ms = cells.get_marks(bufnr)
-      if ms[i] then vim.api.nvim_win_set_cursor(0, { ms[i].row + 1, 0 }) end
-      execute_cell(bufnr, function() run_next(i + 1) end)
+    local marks = cells.get_marks(bufnr)
+    for i = 1, #marks do
+      execute_cell(bufnr, i)
     end
-    run_next(1)
   end, { desc = "Execute all cells top to bottom" })
+
+  vim.api.nvim_create_user_command("JupyterExecuteAbove", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local info = cells.cell_at_row(bufnr, cursor_row)
+    if not info then return end
+    for i = 1, info.index - 1 do
+      execute_cell(bufnr, i)
+    end
+  end, { desc = "Execute all cells above current" })
+
+  vim.api.nvim_create_user_command("JupyterExecuteBelow", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local info = cells.cell_at_row(bufnr, cursor_row)
+    if not info then return end
+    local marks = cells.get_marks(bufnr)
+    for i = info.index, #marks do
+      execute_cell(bufnr, i)
+    end
+  end, { desc = "Execute current cell and all below" })
 
   vim.api.nvim_create_user_command("JupyterNextCell", function()
     local bufnr = vim.api.nvim_get_current_buf()

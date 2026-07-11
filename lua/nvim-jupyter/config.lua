@@ -9,6 +9,7 @@ M.defaults = {
     next_cell        = "]c",
     prev_cell        = "[c",
     delete_cell      = "<space>d",
+    toggle_cell_type = "<space>m",
   },
   max_output_lines = 50,
   runtime_dir = nil,
