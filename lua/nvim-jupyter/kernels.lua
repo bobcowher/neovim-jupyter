@@ -11,10 +11,13 @@ local function new_uuid()
   return result
 end
 
-local function set_status(bufnr, status)
+local function set_status(bufnr, kernel_id, status)
   if not vim.api.nvim_buf_is_valid(bufnr) then return end
-  M._state[bufnr].status = status
-  vim.b[bufnr].jupyter_kernel_status = status
+  local s = M._state[bufnr]
+  if s and s.kernel_id == kernel_id then
+    s.status = status
+    vim.b[bufnr].jupyter_kernel_status = status
+  end
 end
 
 local function register_handlers(bufnr, kernel_id)
@@ -22,12 +25,12 @@ local function register_handlers(bufnr, kernel_id)
 
   daemon.on("kernel_started", function(ev)
     if ev.kernel_id ~= kernel_id then return end
-    set_status(bufnr, "starting")
+    set_status(bufnr, kernel_id, "starting")
   end)
 
   daemon.on("kernel_ready", function(ev)
     if ev.kernel_id ~= kernel_id then return end
-    set_status(bufnr, "idle")
+    set_status(bufnr, kernel_id, "idle")
     vim.notify("nvim-jupyter: kernel ready", vim.log.levels.INFO)
   end)
 
@@ -40,7 +43,7 @@ local function register_handlers(bufnr, kernel_id)
       register_handlers(bufnr, new_id)
       daemon.send({ cmd = "start_kernel", kernel_id = new_id, kernel_name = s.kernel_name, cwd = s.cwd })
     else
-      set_status(bufnr, "dead")
+      set_status(bufnr, kernel_id, "dead")
       vim.notify("nvim-jupyter: kernel died (code " .. ev.code .. ") — use :JupyterRestartKernel", vim.log.levels.WARN)
     end
   end)
@@ -102,12 +105,12 @@ function M.restart(bufnr)
     s.kernel_id = new_id
     register_handlers(bufnr, new_id)
     daemon.send({ cmd = "start_kernel", kernel_id = new_id, kernel_name = s.kernel_name, cwd = s.cwd })
-    set_status(bufnr, "starting")
+    set_status(bufnr, new_id, "starting")
     return
   end
   s.restarting = true
   daemon.send({ cmd = "restart_kernel", kernel_id = s.kernel_id })
-  set_status(bufnr, "starting")
+  set_status(bufnr, s.kernel_id, "starting")
 end
 
 function M.interrupt(bufnr)
@@ -137,11 +140,13 @@ function M.is_ready(bufnr)
 end
 
 function M.set_busy(bufnr)
-  set_status(bufnr, "busy")
+  local s = M._state[bufnr]
+  if s then set_status(bufnr, s.kernel_id, "busy") end
 end
 
 function M.set_idle(bufnr)
-  set_status(bufnr, "idle")
+  local s = M._state[bufnr]
+  if s then set_status(bufnr, s.kernel_id, "idle") end
 end
 
 return M
