@@ -320,10 +320,12 @@ local function open_notebook(path)
       local has_error = false
       for _, out in ipairs(mark.meta.outputs) do
         if out.output_type == "stream" then
-           for _, l in ipairs(out.text or {}) do table.insert(output_lines, l) end
+           local full_text = type(out.text) == "table" and table.concat(out.text, "") or (out.text or "")
+           for _, l in ipairs(output._text_to_lines(full_text)) do table.insert(output_lines, l) end
         elseif out.output_type == "execute_result" or out.output_type == "display_data" then
            if out.data and out.data["text/plain"] then
-             for _, l in ipairs(out.data["text/plain"]) do table.insert(output_lines, l) end
+             local full_text = type(out.data["text/plain"]) == "table" and table.concat(out.data["text/plain"], "") or out.data["text/plain"]
+             for _, l in ipairs(output._text_to_lines(full_text)) do table.insert(output_lines, l) end
            end
            if out.data and out.data["image/png"] then
              current_image = out.data["image/png"]

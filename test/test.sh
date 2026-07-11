@@ -40,8 +40,12 @@ if [ "$#" -ge 1 ]; then
   NB="$1"
 else
   NB="$REPO/test/scratch.ipynb"
-  cp -f "$REPO/test/fixtures/simple.ipynb" "$NB"
-  echo "Fresh scratch copy: $NB (reset from fixture each run)"
+  if [ ! -f "$NB" ]; then
+    cp -f "$REPO/test/fixtures/simple.ipynb" "$NB"
+    echo "Fresh scratch copy: $NB (copied from fixture)"
+  else
+    echo "Reusing existing scratch copy: $NB"
+  fi
 fi
 
 if [ "$CLEAR_OUTPUTS" -eq 1 ]; then
