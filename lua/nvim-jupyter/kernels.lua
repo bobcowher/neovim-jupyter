@@ -50,6 +50,7 @@ local function register_handlers(bufnr, kernel_id)
 
   daemon.on("kernels_list", function(ev)
     if s.status ~= "picking" then return end
+    local names = {}
     local current_idx = nil
     for i, k in ipairs(ev.kernels) do
       local display = k.name .. " — " .. k.display_name
