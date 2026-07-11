@@ -132,6 +132,7 @@ local function execute_cell(bufnr, on_done)
 
   local output_lines = {}
   local had_output = false
+  local cell_outputs = {}
 
   -- Show the running indicator (replaces any prior output for this cell).
   clear_cell_output(bufnr, run_mark_id)
@@ -149,18 +150,54 @@ local function execute_cell(bufnr, on_done)
     set_cell_output(bufnr, run_mark_id, { lines = output_lines, hl = hl, image_png = current_image })
   end
 
+  local function split_text(text)
+    local lines = {}
+    local remaining = text or ""
+    while true do
+      local nl = remaining:find("\n")
+      if not nl then
+        table.insert(lines, remaining)
+        break
+      end
+      table.insert(lines, remaining:sub(1, nl))
+      remaining = remaining:sub(nl + 1)
+    end
+    return lines
+  end
+
   daemon.on("stream", function(ev)
     if ev.msg_id ~= msg_id then return end
+    table.insert(cell_outputs, {
+      output_type = "stream",
+      name = ev.name,
+      text = split_text(ev.text)
+    })
     render(output._text_to_lines(ev.text), "NvimJupyterOutputText", nil)
   end)
 
   daemon.on("execute_result", function(ev)
     if ev.msg_id ~= msg_id then return end
+    local data = { ["text/plain"] = split_text(ev.text) }
+    if ev.image_png and ev.image_png ~= vim.NIL then
+      data["image/png"] = ev.image_png
+    end
+    table.insert(cell_outputs, {
+      output_type = "execute_result",
+      execution_count = ev.execution_count,
+      data = data,
+      metadata = {}
+    })
     render(output._text_to_lines(ev.text), "NvimJupyterOutputText", ev.image_png)
   end)
 
   daemon.on("execute_error", function(ev)
     if ev.msg_id ~= msg_id then return end
+    table.insert(cell_outputs, {
+      output_type = "error",
+      ename = ev.ename,
+      evalue = ev.evalue,
+      traceback = ev.traceback or {}
+    })
     local err_lines = { ev.ename .. ": " .. ev.evalue }
     for _, tb in ipairs(ev.traceback or {}) do
       -- A traceback frame is one string with embedded \n (and sometimes \r).
@@ -192,6 +229,7 @@ local function execute_cell(bufnr, on_done)
       local meta = s and s.cell_meta[marks[cur_index].id]
       if meta then
         meta.execution_count = ks.execution_count
+        meta.outputs = cell_outputs
         ks.execution_count = (ks.execution_count or 0) + 1
       end
     end

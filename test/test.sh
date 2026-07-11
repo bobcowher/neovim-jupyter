@@ -27,6 +27,12 @@ sed "s|@@REPO@@|$REPO|g" "$REPO/test/repro-init.lua" > "$CONF_DIR/init.lua"
 echo "Building nvim-jupyter daemon..."
 bash "$REPO/build.sh"
 
+CLEAR_OUTPUTS=0
+if [ "$#" -ge 1 ] && [ "$1" = "--clear" ]; then
+  CLEAR_OUTPUTS=1
+  shift
+fi
+
 # No argument: copy the pristine fixture to a gitignored scratch file (fresh each
 # run) and open that, so editing/saving never dirties test/fixtures/simple.ipynb.
 # An explicit path argument is opened directly, untouched.
@@ -36,6 +42,11 @@ else
   NB="$REPO/test/scratch.ipynb"
   cp -f "$REPO/test/fixtures/simple.ipynb" "$NB"
   echo "Fresh scratch copy: $NB (reset from fixture each run)"
+fi
+
+if [ "$CLEAR_OUTPUTS" -eq 1 ]; then
+  echo "Clearing outputs from $NB..."
+  jq '.cells[].outputs = [] | .cells[].execution_count = null' "$NB" > "${NB}.tmp" && mv "${NB}.tmp" "$NB"
 fi
 
 echo ""
