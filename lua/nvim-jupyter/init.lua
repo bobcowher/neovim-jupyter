@@ -97,7 +97,7 @@ local function reanchor_all_output(bufnr)
   end
 end
 
-local function execute_cell(bufnr, target_index)
+local function execute_cell(bufnr, target_index, post_hook)
   if not kernels.is_ready(bufnr) then
     local s = kernels.state(bufnr)
     local st = s and s.status or "not started"
@@ -116,17 +116,16 @@ local function execute_cell(bufnr, target_index)
     end
     index = cell_info.index
   end
+  
   local source = cells.get_source(bufnr, index)
   local msg_id = kernels.new_msg_id()
-
   local s = cells._state[bufnr]
 
-  -- Track the running cell by its edit-stable separator mark id rather than a
-  -- fixed row, so its output follows it through edits and inserted cells.
   local marks0 = cells.get_marks(bufnr)
   local run_mark_id = marks0[index] and marks0[index].id
+  local meta = s and s.cell_meta[run_mark_id]
 
-  if cell_info.mark.meta and cell_info.mark.meta.cell_type == "markdown" then
+  if meta and meta.cell_type == "markdown" then
     clear_cell_output(bufnr, run_mark_id)
     return
   end
@@ -135,7 +134,6 @@ local function execute_cell(bufnr, target_index)
   local had_output = false
   local cell_outputs = {}
 
-  -- Show the running indicator (replaces any prior output for this cell).
   clear_cell_output(bufnr, run_mark_id)
   set_cell_output(bufnr, run_mark_id, { lines = { "[*] running..." }, hl = "NvimJupyterRunning" })
 
@@ -143,7 +141,6 @@ local function execute_cell(bufnr, target_index)
   daemon.send({ cmd = "execute", kernel_id = ks.kernel_id, msg_id = msg_id, code = source })
 
   local current_image = nil
-
   local function render(new_lines, hl, image_png)
     had_output = true
     for _, l in ipairs(new_lines or {}) do table.insert(output_lines, l) end
@@ -166,69 +163,47 @@ local function execute_cell(bufnr, target_index)
     return lines
   end
 
-  daemon.on("stream", function(ev)
+  local hs = {}
+  hs.stream = daemon.on("stream", function(ev)
     if ev.msg_id ~= msg_id then return end
-    table.insert(cell_outputs, {
-      output_type = "stream",
-      name = ev.name,
-      text = split_text(ev.text)
-    })
+    table.insert(cell_outputs, { output_type = "stream", name = ev.name, text = split_text(ev.text) })
     render(output._text_to_lines(ev.text), "NvimJupyterOutputText", nil)
   end)
 
-  daemon.on("execute_result", function(ev)
+  hs.execute_result = daemon.on("execute_result", function(ev)
     if ev.msg_id ~= msg_id then return end
     local data = { ["text/plain"] = split_text(ev.text) }
-    if ev.image_png and ev.image_png ~= vim.NIL then
-      data["image/png"] = ev.image_png
-    end
-    table.insert(cell_outputs, {
-      output_type = "execute_result",
-      execution_count = ev.execution_count,
-      data = data,
-      metadata = {}
-    })
+    if ev.image_png and ev.image_png ~= vim.NIL then data["image/png"] = ev.image_png end
+    table.insert(cell_outputs, { output_type = "execute_result", execution_count = ev.execution_count, data = data, metadata = {} })
     render(output._text_to_lines(ev.text), "NvimJupyterOutputText", ev.image_png)
   end)
 
-  daemon.on("execute_error", function(ev)
+  hs.execute_error = daemon.on("execute_error", function(ev)
     if ev.msg_id ~= msg_id then return end
-    table.insert(cell_outputs, {
-      output_type = "error",
-      ename = ev.ename,
-      evalue = ev.evalue,
-      traceback = ev.traceback or {}
-    })
+    table.insert(cell_outputs, { output_type = "error", ename = ev.ename, evalue = ev.evalue, traceback = ev.traceback or {} })
     local err_lines = { ev.ename .. ": " .. ev.evalue }
     for _, tb in ipairs(ev.traceback or {}) do
       local clean = output._strip_ansi(tb):gsub("\r", "")
-      for _, line in ipairs(output._text_to_lines(clean)) do
-        table.insert(err_lines, line)
-      end
+      for _, line in ipairs(output._text_to_lines(clean)) do table.insert(err_lines, line) end
     end
     render(err_lines, "NvimJupyterOutputError", nil)
   end)
 
-  daemon.on("execute_done", function(ev)
+  hs.execute_done = daemon.on("execute_done", function(ev)
     if ev.msg_id ~= msg_id then return end
     kernels.set_idle(bufnr)
-    if not had_output then
-      clear_cell_output(bufnr, run_mark_id)
+    if not had_output then clear_cell_output(bufnr, run_mark_id) end
+    local meta_curr = s and s.cell_meta[run_mark_id]
+    if meta_curr then
+      meta_curr.execution_count = ks.execution_count
+      meta_curr.outputs = cell_outputs
+      ks.execution_count = (ks.execution_count or 0) + 1
     end
-    local marks = cells.get_marks(bufnr)
-    local cur_index = index
-    for i, m in ipairs(marks) do
-      if m.id == run_mark_id then cur_index = i break end
-    end
-    if marks[cur_index] then
-      local meta = s and s.cell_meta[marks[cur_index].id]
-      if meta then
-        meta.execution_count = ks.execution_count
-        meta.outputs = cell_outputs
-        ks.execution_count = (ks.execution_count or 0) + 1
-      end
-    end
-
+    daemon.remove_handler("stream", hs.stream)
+    daemon.remove_handler("execute_result", hs.execute_result)
+    daemon.remove_handler("execute_error", hs.execute_error)
+    daemon.remove_handler("execute_done", hs.execute_done)
+    if post_hook then post_hook(index) end
   end)
 end
 
@@ -395,22 +370,12 @@ function apply_keymaps(bufnr)
   if km.execute_advance ~= false then
     vim.keymap.set({ "n", "i" }, km.execute_advance, function()
       vim.cmd("stopinsert")
-      local cursor = vim.api.nvim_win_get_cursor(0)
-      local found = cells.cell_at_row(bufnr, cursor[1] - 1)
-      if not found then return end
-      local index = found.index
-
-      execute_cell(bufnr, nil)
-
-      local mark_count = #cells.get_marks(bufnr)
-      if index >= mark_count then
-        cells.add_cell_below(bufnr, index)
-      end
-      local next_marks = cells.get_marks(bufnr)
-      if next_marks[index + 1] then
-        local row = next_marks[index + 1].row
-        pcall(vim.api.nvim_win_set_cursor, 0, { row + 1, 0 })
-      end
+      execute_cell(bufnr, nil, function(index)
+        local mark_count = #cells.get_marks(bufnr)
+        if index >= mark_count then cells.add_cell_below(bufnr, index) end
+        local ms = cells.get_marks(bufnr)
+        if ms[index + 1] then vim.api.nvim_win_set_cursor(0, { ms[index + 1].row + 1, 0 }) end
+      end)
     end, vim.tbl_extend("force", o, { desc = "Execute cell + advance" }))
   end
 
@@ -424,20 +389,14 @@ function apply_keymaps(bufnr)
   if km.execute_insert ~= false then
     vim.keymap.set({ "n", "i" }, km.execute_insert, function()
       vim.cmd("stopinsert")
-      local cursor = vim.api.nvim_win_get_cursor(0)
-      local found = cells.cell_at_row(bufnr, cursor[1] - 1)
-      if not found then return end
-      local index = found.index
-
-      execute_cell(bufnr, nil)
-
-      local new_index = cells.add_cell_below(bufnr, index)
-      local next_marks = cells.get_marks(bufnr)
-      if next_marks[new_index] then
-        local row = next_marks[new_index].row
-        pcall(vim.api.nvim_win_set_cursor, 0, { row + 1, 0 })
-        vim.cmd("startinsert")
-      end
+      execute_cell(bufnr, nil, function(index)
+        local new_i = cells.add_cell_below(bufnr, index)
+        local ms = cells.get_marks(bufnr)
+        if ms[new_i] then
+          vim.api.nvim_win_set_cursor(0, { ms[new_i].row + 1, 0 })
+          vim.cmd("startinsert")
+        end
+      end)
     end, vim.tbl_extend("force", o, { desc = "Execute cell + insert below" }))
   end
 
@@ -550,7 +509,7 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("JupyterExecuteAndAdvance", function()
     local bufnr = vim.api.nvim_get_current_buf()
-    execute_cell(bufnr, function(index)
+    execute_cell(bufnr, nil, function(index)
       local mark_count = #cells.get_marks(bufnr)
       if index >= mark_count then cells.add_cell_below(bufnr, index) end
       local ms = cells.get_marks(bufnr)
@@ -560,7 +519,7 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("JupyterExecuteAndInsert", function()
     local bufnr = vim.api.nvim_get_current_buf()
-    execute_cell(bufnr, function(index)
+    execute_cell(bufnr, nil, function(index)
       local new_i = cells.add_cell_below(bufnr, index)
       local ms = cells.get_marks(bufnr)
       if ms[new_i] then vim.api.nvim_win_set_cursor(0, { ms[new_i].row + 1, 0 }) end

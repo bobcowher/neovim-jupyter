@@ -1,0 +1,10 @@
+local bufnr = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {"line1", "line2", "line3"})
+vim.api.nvim_win_set_buf(0, bufnr)
+vim.api.nvim_win_set_cursor(0, {1, 0})
+vim.fn.setreg('"', vim.api.nvim_get_current_line() .. '\n', 'l')
+vim.api.nvim_set_current_line('')
+vim.api.nvim_win_set_cursor(0, {2, 0})
+vim.cmd("normal! p")
+local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+for i, l in ipairs(lines) do print(i, l) end

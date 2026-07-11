@@ -33,8 +33,16 @@ local function register_handlers(bufnr, kernel_id)
 
   daemon.on("kernel_died", function(ev)
     if ev.kernel_id ~= kernel_id then return end
-    set_status(bufnr, "dead")
-    vim.notify("nvim-jupyter: kernel died (code " .. ev.code .. ") — use :JupyterRestartKernel", vim.log.levels.WARN)
+    if s.restarting then
+      s.restarting = false
+      local new_id = new_uuid()
+      s.kernel_id = new_id
+      register_handlers(bufnr, new_id)
+      daemon.send({ cmd = "start_kernel", kernel_id = new_id, kernel_name = s.kernel_name, cwd = s.cwd })
+    else
+      set_status(bufnr, "dead")
+      vim.notify("nvim-jupyter: kernel died (code " .. ev.code .. ") — use :JupyterRestartKernel", vim.log.levels.WARN)
+    end
   end)
 
   daemon.on("kernels_list", function(ev)
@@ -89,6 +97,15 @@ end
 function M.restart(bufnr)
   local s = M._state[bufnr]
   if not s then return end
+  if s.status == "dead" then
+    local new_id = new_uuid()
+    s.kernel_id = new_id
+    register_handlers(bufnr, new_id)
+    daemon.send({ cmd = "start_kernel", kernel_id = new_id, kernel_name = s.kernel_name, cwd = s.cwd })
+    set_status(bufnr, "starting")
+    return
+  end
+  s.restarting = true
   daemon.send({ cmd = "restart_kernel", kernel_id = s.kernel_id })
   set_status(bufnr, "starting")
 end

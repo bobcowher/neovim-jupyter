@@ -74,6 +74,18 @@ end
 function M.on(event_type, handler)
   state.handlers[event_type] = state.handlers[event_type] or {}
   table.insert(state.handlers[event_type], handler)
+  return handler
+end
+
+function M.remove_handler(event_type, handler)
+  local list = state.handlers[event_type]
+  if not list then return end
+  for i, fn in ipairs(list) do
+    if fn == handler then
+      table.remove(list, i)
+      break
+    end
+  end
 end
 
 function M.stop()
