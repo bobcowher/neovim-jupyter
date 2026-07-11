@@ -22,7 +22,7 @@ end
 
 function M.draw_kitty(id, row, col, b64_data)
   local buf = {}
-  table.insert(buf, string.format("\277\27[%d;%dH", row, col))
+  table.insert(buf, string.format("\x1b7\x1b[%d;%dH", row, col))
   
   local chunk_size = 4096
   local total_chunks = math.ceil(#b64_data / chunk_size)
@@ -33,18 +33,18 @@ function M.draw_kitty(id, row, col, b64_data)
     local m = i < total_chunks and 1 or 0
     
     if i == 1 then
-      table.insert(buf, string.format("\27_Ga=T,f=100,i=%d,q=2,m=%d;%s\27\\", id, m, chunk))
+      table.insert(buf, string.format("\x1b_Ga=T,f=100,i=%d,q=2,m=%d;%s\x1b\\", id, m, chunk))
     else
-      table.insert(buf, string.format("\27_Gm=%d;%s\27\\", m, chunk))
+      table.insert(buf, string.format("\x1b_Gm=%d;%s\x1b\\", m, chunk))
     end
   end
   
-  table.insert(buf, "\278")
+  table.insert(buf, "\x1b8")
   write_tty(table.concat(buf))
 end
 
 function M.clear_kitty(id)
-  write_tty(string.format("\27_Ga=d,d=i,i=%d\27\\", id))
+  write_tty(string.format("\x1b_Ga=d,d=i,i=%d\x1b\\", id))
 end
 
 function M.clear_all()
