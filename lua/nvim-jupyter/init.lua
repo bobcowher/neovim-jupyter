@@ -400,17 +400,22 @@ function apply_keymaps(bufnr)
   if km.execute_advance ~= false then
     vim.keymap.set({ "n", "i" }, km.execute_advance, function()
       vim.cmd("stopinsert")
-      execute_cell(bufnr, function(index)
-        local mark_count = #cells.get_marks(bufnr)
-        if index >= mark_count then
-          cells.add_cell_below(bufnr, index)
-        end
-        local next_marks = cells.get_marks(bufnr)
-        if next_marks[index + 1] then
-          local row = next_marks[index + 1].row
-          vim.api.nvim_win_set_cursor(0, { row + 1, 0 })
-        end
-      end)
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      local found = cells.cell_at_row(bufnr, cursor[1] - 1)
+      if not found then return end
+      local index = found.index
+
+      execute_cell(bufnr, nil)
+
+      local mark_count = #cells.get_marks(bufnr)
+      if index >= mark_count then
+        cells.add_cell_below(bufnr, index)
+      end
+      local next_marks = cells.get_marks(bufnr)
+      if next_marks[index + 1] then
+        local row = next_marks[index + 1].row
+        pcall(vim.api.nvim_win_set_cursor, 0, { row + 1, 0 })
+      end
     end, vim.tbl_extend("force", o, { desc = "Execute cell + advance" }))
   end
 
@@ -424,13 +429,20 @@ function apply_keymaps(bufnr)
   if km.execute_insert ~= false then
     vim.keymap.set({ "n", "i" }, km.execute_insert, function()
       vim.cmd("stopinsert")
-      execute_cell(bufnr, function(index)
-        local new_index = cells.add_cell_below(bufnr, index)
-        local next_marks = cells.get_marks(bufnr)
-        if next_marks[new_index] then
-          vim.api.nvim_win_set_cursor(0, { next_marks[new_index].row + 1, 0 })
-        end
-      end)
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      local found = cells.cell_at_row(bufnr, cursor[1] - 1)
+      if not found then return end
+      local index = found.index
+
+      execute_cell(bufnr, nil)
+
+      local new_index = cells.add_cell_below(bufnr, index)
+      local next_marks = cells.get_marks(bufnr)
+      if next_marks[new_index] then
+        local row = next_marks[new_index].row
+        pcall(vim.api.nvim_win_set_cursor, 0, { row + 1, 0 })
+        vim.cmd("startinsert")
+      end
     end, vim.tbl_extend("force", o, { desc = "Execute cell + insert below" }))
   end
 
