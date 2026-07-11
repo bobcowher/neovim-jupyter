@@ -58,7 +58,7 @@ local function register_handlers(bufnr, kernel_id)
       vim.notify("nvim-jupyter: no kernels found — run: pip install ipykernel", vim.log.levels.ERROR)
       return
     end
-    vim.ui.select(names, { prompt = "Select Jupyter kernel:" }, function(choice)
+    require("nvim-jupyter.ui").select(names, { prompt = "Select Jupyter kernel:" }, function(choice)
       if not choice then return end
       local chosen_name = choice:match("^([^%s]+)")
       s.kernel_name = chosen_name
