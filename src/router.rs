@@ -40,6 +40,7 @@ impl Router {
                             name,
                             display_name: spec.display_name,
                             language: spec.language,
+                            argv: spec.argv,
                         }).collect();
                         let _ = self.event_tx.send(Event::KernelsList { kernels }).await;
                     }

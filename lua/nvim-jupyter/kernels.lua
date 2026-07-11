@@ -62,7 +62,30 @@ local function register_handlers(bufnr, kernel_id)
       if not choice then return end
       local chosen_name = choice:match("^([^%s]+)")
       s.kernel_name = chosen_name
-      daemon.send({ cmd = "start_kernel", kernel_id = kernel_id, kernel_name = chosen_name, cwd = s.cwd })
+
+      local chosen_spec
+      for _, k in ipairs(ev.kernels) do
+        if k.name == chosen_name then chosen_spec = k break end
+      end
+
+      if chosen_spec and chosen_spec.language == "python" and chosen_spec.argv and chosen_spec.argv[1] then
+        local py_exe = chosen_spec.argv[1]
+        vim.system({ py_exe, "-c", "import ipykernel" }, { text = true }, function(obj)
+          vim.schedule(function()
+            if obj.code ~= 0 then
+              vim.ui.select({ "Yes", "No" }, { prompt = "ipykernel is missing in this environment. Install it now?" }, function(ans)
+                if ans == "Yes" then
+                  vim.cmd("split | term " .. py_exe .. " -m pip install ipykernel")
+                end
+              end)
+            else
+              daemon.send({ cmd = "start_kernel", kernel_id = kernel_id, kernel_name = chosen_name, cwd = s.cwd })
+            end
+          end)
+        end)
+      else
+        daemon.send({ cmd = "start_kernel", kernel_id = kernel_id, kernel_name = chosen_name, cwd = s.cwd })
+      end
     end)
   end)
 end

@@ -31,6 +31,7 @@ pub struct KernelSpec {
     pub name: String,
     pub display_name: String,
     pub language: String,
+    pub argv: Vec<String>,
 }
 
 #[cfg(test)]
