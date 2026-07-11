@@ -209,11 +209,12 @@ async fn execute_loop(
                     }
                     "execute_result" | "display_data" => {
                         let text = KernelClient::extract_text(&msg).unwrap_or_default();
+                        let image_png = KernelClient::extract_image_png(&msg);
                         let exec_count = msg.content.get("execution_count")
                             .and_then(|v| v.as_u64()).unwrap_or(0) as u32;
                         let _ = event_tx.send(Event::ExecuteResult {
                             kernel_id: kernel_id.into(), msg_id: msg_id.into(),
-                            execution_count: exec_count, text,
+                            execution_count: exec_count, text, image_png,
                         }).await;
                     }
                     "error" => {

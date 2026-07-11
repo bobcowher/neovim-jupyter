@@ -20,7 +20,7 @@ pub enum Event {
     KernelDied { kernel_id: String, code: i32 },
     KernelsList { kernels: Vec<KernelSpec> },
     Stream { kernel_id: String, msg_id: String, name: String, text: String },
-    ExecuteResult { kernel_id: String, msg_id: String, execution_count: u32, text: String },
+    ExecuteResult { kernel_id: String, msg_id: String, execution_count: u32, text: String, image_png: Option<String> },
     ExecuteError { kernel_id: String, msg_id: String, ename: String, evalue: String, traceback: Vec<String> },
     ExecuteDone { kernel_id: String, msg_id: String, status: String },
     Error { msg: String },

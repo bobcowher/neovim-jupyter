@@ -96,4 +96,11 @@ impl KernelClient {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
     }
+
+    pub fn extract_image_png(msg: &JupyterMessage) -> Option<String> {
+        msg.content.get("data")
+            .and_then(|d| d.get("image/png"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
 }

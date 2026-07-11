@@ -4,6 +4,7 @@ local notebook = require("nvim-jupyter.notebook")
 local cells    = require("nvim-jupyter.cells")
 local output   = require("nvim-jupyter.output")
 local kernels  = require("nvim-jupyter.kernels")
+local graphics = require("nvim-jupyter.graphics")
 
 local M = {}
 
@@ -36,25 +37,40 @@ local function reanchor_output(bufnr, mark_id)
   if not s or not s.cell_output then return end
   local entry = s.cell_output[mark_id]
   if not entry then return end
+  
+  if entry.image_ext then
+    graphics.remove_image(bufnr, entry.image_ext)
+    entry.image_ext = nil
+  end
   if entry.ext then
     pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, entry.ext)
     entry.ext = nil
   end
+  
+  local row = cell_last_row_by_mark(bufnr, mark_id)
+  if not row then return end
+
   if entry.lines and #entry.lines > 0 then
-    local row = cell_last_row_by_mark(bufnr, mark_id)
-    if row then
-      entry.ext = output.set_at(bufnr, s.ns_output, row, entry.lines, entry.hl,
-        config.options.max_output_lines, nil)
-    end
+    entry.ext = output.set_at(bufnr, s.ns_output, row, entry.lines, entry.hl,
+      config.options.max_output_lines, nil)
+  end
+  if entry.image_png then
+    entry.image_ext = graphics.show_image(bufnr, row, entry.image_png)
   end
 end
 
-local function set_cell_output(bufnr, mark_id, lines, hl)
+local function set_cell_output(bufnr, mark_id, opts)
   local s = cells._state[bufnr]
   if not s then return end
   s.cell_output = s.cell_output or {}
   local prev = s.cell_output[mark_id]
-  s.cell_output[mark_id] = { lines = lines, hl = hl, ext = prev and prev.ext or nil }
+  s.cell_output[mark_id] = {
+    lines = opts.lines,
+    hl = opts.hl,
+    image_png = opts.image_png,
+    ext = prev and prev.ext or nil,
+    image_ext = prev and prev.image_ext or nil,
+  }
   reanchor_output(bufnr, mark_id)
 end
 
@@ -62,8 +78,13 @@ local function clear_cell_output(bufnr, mark_id)
   local s = cells._state[bufnr]
   if not s or not s.cell_output then return end
   local entry = s.cell_output[mark_id]
-  if entry and entry.ext then
-    pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, entry.ext)
+  if entry then
+    if entry.ext then
+      pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, entry.ext)
+    end
+    if entry.image_ext then
+      graphics.remove_image(bufnr, entry.image_ext)
+    end
   end
   s.cell_output[mark_id] = nil
 end
@@ -114,25 +135,28 @@ local function execute_cell(bufnr, on_done)
 
   -- Show the running indicator (replaces any prior output for this cell).
   clear_cell_output(bufnr, run_mark_id)
-  set_cell_output(bufnr, run_mark_id, { "[*] running..." }, "NvimJupyterRunning")
+  set_cell_output(bufnr, run_mark_id, { lines = { "[*] running..." }, hl = "NvimJupyterRunning" })
 
   kernels.set_busy(bufnr)
   daemon.send({ cmd = "execute", kernel_id = ks.kernel_id, msg_id = msg_id, code = source })
 
-  local function render(new_lines, hl)
+  local current_image = nil
+
+  local function render(new_lines, hl, image_png)
     had_output = true
-    for _, l in ipairs(new_lines) do table.insert(output_lines, l) end
-    set_cell_output(bufnr, run_mark_id, output_lines, hl)
+    for _, l in ipairs(new_lines or {}) do table.insert(output_lines, l) end
+    if image_png then current_image = image_png end
+    set_cell_output(bufnr, run_mark_id, { lines = output_lines, hl = hl, image_png = current_image })
   end
 
   daemon.on("stream", function(ev)
     if ev.msg_id ~= msg_id then return end
-    render(output._text_to_lines(ev.text), "NvimJupyterOutputText")
+    render(output._text_to_lines(ev.text), "NvimJupyterOutputText", nil)
   end)
 
   daemon.on("execute_result", function(ev)
     if ev.msg_id ~= msg_id then return end
-    render(output._text_to_lines(ev.text), "NvimJupyterOutputText")
+    render(output._text_to_lines(ev.text), "NvimJupyterOutputText", ev.image_png)
   end)
 
   daemon.on("execute_error", function(ev)
@@ -147,7 +171,7 @@ local function execute_cell(bufnr, on_done)
         table.insert(err_lines, line)
       end
     end
-    render(err_lines, "NvimJupyterOutputError")
+    render(err_lines, "NvimJupyterOutputError", nil)
   end)
 
   daemon.on("execute_done", function(ev)
@@ -359,6 +383,7 @@ end
 
 function M.setup(opts)
   config.setup(opts)
+  graphics.setup()
 
   vim.api.nvim_create_autocmd("BufReadCmd", {
     pattern  = "*.ipynb",
