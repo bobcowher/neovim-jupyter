@@ -82,6 +82,9 @@ function M.to_buffer_lines(nb)
     if #cell_lines > 0 and cell_lines[#cell_lines] == "" then
       table.remove(cell_lines)
     end
+    if #cell_lines == 0 then
+      table.insert(cell_lines, "")
+    end
     for _, l in ipairs(cell_lines) do
       table.insert(lines, l)
     end
