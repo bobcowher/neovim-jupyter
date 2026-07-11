@@ -270,6 +270,18 @@ local function open_notebook(path)
     end,
     desc     = "nvim-jupyter: unrender markdown for raw editing",
   })
+  
+  -- Prevent the cursor from landing on the fake row 0
+  vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+    buffer = bufnr,
+    callback = function()
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      if cursor[1] == 1 then
+        vim.api.nvim_win_set_cursor(0, { 2, 0 })
+      end
+    end,
+    desc     = "nvim-jupyter: prevent cursor on fake padding line",
+  })
 
   render_markdown_cells(bufnr)
 
