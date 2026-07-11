@@ -4,20 +4,10 @@ local images = {}
 local ns_images = vim.api.nvim_create_namespace("nvim_jupyter_images")
 local image_counter = 50000
 
-local function get_tty()
-  local sys = vim.loop.os_uname().sysname
-  local tty = sys == "Darwin" and "/dev/fd/1" or "/proc/self/fd/1"
-  return vim.fn.resolve(tty)
-end
-
 local function write_tty(data)
-  local tty = get_tty()
-  local f = io.open(tty, "w")
-  if f then
-    f:write(data)
-    f:flush()
-    f:close()
-  end
+  -- Write to stderr to bypass Neovim's stdout screen renderer
+  -- This prevents base64 escape sequences from being interleaved with UI redraws
+  pcall(vim.api.nvim_chan_send, vim.v.stderr, data)
 end
 
 function M.draw_kitty(id, row, col, b64_data)
