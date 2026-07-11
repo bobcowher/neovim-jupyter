@@ -79,17 +79,60 @@ pub struct KernelspecSpec {
 }
 
 pub fn list_kernelspecs() -> Result<Vec<(String, KernelspecSpec)>> {
-    let output = std::process::Command::new("jupyter")
+    let mut specs = Vec::new();
+
+    // 1. Standard Jupyter kernels
+    if let Ok(output) = std::process::Command::new("jupyter")
         .args(["kernelspec", "list", "--json"])
         .output()
-        .context("failed to run `jupyter kernelspec list --json` — is jupyter installed?")?;
-
-    if !output.status.success() {
-        return Err(anyhow!("jupyter kernelspec list failed"));
+    {
+        if output.status.success() {
+            if let Ok(list) = serde_json::from_slice::<KernelspecList>(&output.stdout) {
+                specs.extend(list.kernelspecs.into_iter().map(|(k, v)| (k, v.spec)));
+            }
+        }
     }
 
-    let list: KernelspecList = serde_json::from_slice(&output.stdout)?;
-    Ok(list.kernelspecs.into_iter().map(|(k, v)| (k, v.spec)).collect())
+    // 2. Conda environments
+    if let Ok(output) = std::process::Command::new("conda")
+        .args(["env", "list", "--json"])
+        .output()
+    {
+        if output.status.success() {
+            #[derive(Deserialize)]
+            struct CondaEnvList {
+                envs: Vec<String>,
+            }
+            if let Ok(list) = serde_json::from_slice::<CondaEnvList>(&output.stdout) {
+                for env_path_str in list.envs {
+                    let env_path = std::path::Path::new(&env_path_str);
+                    let py_bin = env_path.join("bin").join("python");
+                    if py_bin.exists() {
+                        let env_name = env_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let kernel_name = format!("conda-env-{}", env_name);
+                        let spec = KernelspecSpec {
+                            argv: vec![
+                                py_bin.to_string_lossy().to_string(),
+                                "-m".into(),
+                                "ipykernel_launcher".into(),
+                                "-f".into(),
+                                "{connection_file}".into(),
+                            ],
+                            display_name: format!("Python ({})", env_name),
+                            language: "python".into(),
+                        };
+                        specs.push((kernel_name, spec));
+                    }
+                }
+            }
+        }
+    }
+
+    if specs.is_empty() {
+        return Err(anyhow!("No Jupyter kernels found. Please install jupyter/ipykernel."));
+    }
+
+    Ok(specs)
 }
 
 pub fn get_kernelspec(kernel_name: &str) -> Result<KernelspecSpec> {
