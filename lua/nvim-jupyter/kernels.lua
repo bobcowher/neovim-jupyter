@@ -73,7 +73,7 @@ local function register_handlers(bufnr, kernel_id)
         vim.system({ py_exe, "-c", "import ipykernel" }, { text = true }, function(obj)
           vim.schedule(function()
             if obj.code ~= 0 then
-              vim.ui.select({ "Yes", "No" }, { prompt = "ipykernel is missing in this environment. Install it now?" }, function(ans)
+              require("nvim-jupyter.ui").select({ "Yes", "No" }, { prompt = "ipykernel is missing in this environment. Install it now?", no_confirm = true }, function(ans)
                 if ans == "Yes" then
                   vim.cmd("split | term " .. py_exe .. " -m pip install ipykernel")
                 end

@@ -49,42 +49,20 @@ function M.select(items, opts, on_choice)
     local idx = cursor[1]
     local choice = items[idx]
     
-    local confirm_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[confirm_buf].bufhidden = "wipe"
-    vim.bo[confirm_buf].buftype = "nofile"
-    vim.api.nvim_buf_set_lines(confirm_buf, 0, -1, false, {
-      "Start Kernel?",
-      tostring(choice),
-      "",
-      "[y] Yes    [n] No"
-    })
-    
-    local c_width = math.max(40, string.len(tostring(choice)) + 4)
-    local c_height = 4
-    local c_win = vim.api.nvim_open_win(confirm_buf, true, {
-      relative = "win",
-      win = win,
-      width = c_width,
-      height = c_height,
-      row = math.floor((height - c_height) / 2),
-      col = math.floor((width - c_width) / 2),
-      style = "minimal",
-      border = "rounded",
-      zindex = 151,
-    })
-
-    vim.keymap.set("n", "y", function()
-      if vim.api.nvim_win_is_valid(c_win) then vim.api.nvim_win_close(c_win, true) end
+    if opts.no_confirm then
       close(choice)
-    end, { buffer = confirm_buf, nowait = true })
+      return
+    end
 
-    vim.keymap.set("n", "n", function()
-      if vim.api.nvim_win_is_valid(c_win) then vim.api.nvim_win_close(c_win, true) end
-    end, { buffer = confirm_buf, nowait = true })
-
-    vim.keymap.set("n", "<Esc>", function()
-      if vim.api.nvim_win_is_valid(c_win) then vim.api.nvim_win_close(c_win, true) end
-    end, { buffer = confirm_buf, nowait = true })
+    if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+    
+    M.select({ "Yes", "No" }, { prompt = "Start Kernel? " .. tostring(choice), no_confirm = true }, function(ans)
+      if ans == "Yes" then
+        on_choice(choice)
+      else
+        on_choice(nil)
+      end
+    end)
   end
 
   vim.keymap.set("n", "<CR>", confirm_and_close, { buffer = buf, nowait = true })
