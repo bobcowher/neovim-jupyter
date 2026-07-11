@@ -54,7 +54,7 @@ local function reanchor_output(bufnr, mark_id)
     entry.ext = output.set_at(bufnr, s.ns_output, row, entry.lines, entry.hl,
       config.options.max_output_lines, nil)
   end
-  if entry.image_png then
+  if entry.image_png and entry.image_png ~= vim.NIL then
     entry.image_ext = graphics.show_image(bufnr, row, entry.image_png)
   end
 end
@@ -145,7 +145,7 @@ local function execute_cell(bufnr, on_done)
   local function render(new_lines, hl, image_png)
     had_output = true
     for _, l in ipairs(new_lines or {}) do table.insert(output_lines, l) end
-    if image_png then current_image = image_png end
+    if image_png and image_png ~= vim.NIL then current_image = image_png end
     set_cell_output(bufnr, run_mark_id, { lines = output_lines, hl = hl, image_png = current_image })
   end
 
