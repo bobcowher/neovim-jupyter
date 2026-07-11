@@ -468,6 +468,24 @@ function apply_keymaps(bufnr)
     end, vim.tbl_extend("force", o, { desc = "Previous cell" }))
   end
 
+  vim.keymap.set("n", "dd", function()
+    if vim.v.count > 0 then return "dd" end
+    local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local cell_info = cells.cell_at_row(bufnr, cursor_row)
+    if cell_info then
+      local start_row, end_row = cells.cell_range(bufnr, cell_info.index)
+      if end_row - start_row == 1 then
+        local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row, false)
+        if lines[1] == "" then
+          return "<cmd>lua require('nvim-jupyter.cells').delete_cell(" .. bufnr .. ", " .. cell_info.index .. ")<CR>"
+        else
+          return "<cmd>lua vim.cmd('normal! yy'); vim.api.nvim_set_current_line('')<CR>"
+        end
+      end
+    end
+    return "dd"
+  end, vim.tbl_extend("force", o, { expr = true, replace_keycodes = true, desc = "Context-aware delete (line or cell)" }))
+
   if km.delete_cell ~= false then
     vim.keymap.set("n", km.delete_cell, function()
       local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
