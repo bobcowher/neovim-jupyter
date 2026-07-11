@@ -313,6 +313,42 @@ local function open_notebook(path)
 
   cells.init(bufnr, nb, lines, cell_starts)
 
+  for i, mark in ipairs(cells.get_marks(bufnr)) do
+    if mark.meta and mark.meta.outputs then
+      local output_lines = {}
+      local current_image = nil
+      local has_error = false
+      for _, out in ipairs(mark.meta.outputs) do
+        if out.output_type == "stream" then
+           for _, l in ipairs(out.text or {}) do table.insert(output_lines, l) end
+        elseif out.output_type == "execute_result" or out.output_type == "display_data" then
+           if out.data and out.data["text/plain"] then
+             for _, l in ipairs(out.data["text/plain"]) do table.insert(output_lines, l) end
+           end
+           if out.data and out.data["image/png"] then
+             current_image = out.data["image/png"]
+           end
+        elseif out.output_type == "error" then
+           has_error = true
+           table.insert(output_lines, (out.ename or "Error") .. ": " .. (out.evalue or ""))
+           for _, tb in ipairs(out.traceback or {}) do
+              local clean = output._strip_ansi(tb):gsub("\r", "")
+              for _, line in ipairs(output._text_to_lines(clean)) do
+                table.insert(output_lines, line)
+              end
+           end
+        end
+      end
+      if #output_lines > 0 or current_image then
+         set_cell_output(bufnr, mark.id, {
+           lines = output_lines,
+           hl = has_error and "NvimJupyterOutputError" or "NvimJupyterOutputText",
+           image_png = current_image
+         })
+      end
+    end
+  end
+
   -- Keep each cell's output pinned to its current last line as the buffer is
   -- edited (typing, `o`, inserted/removed cells). Without this, output stays at
   -- the row it was rendered at and drifts into the middle of the cell.
