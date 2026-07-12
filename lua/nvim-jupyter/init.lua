@@ -854,6 +854,8 @@ function M.setup(opts)
   end, { desc = "Build nvim-jupyter Rust binary" })
 end
 
+local scratch_buf = nil
+
 function M.indentexpr()
   local lnum = vim.v.lnum
   local bufnr = vim.api.nvim_get_current_buf()
@@ -865,24 +867,37 @@ function M.indentexpr()
   end
   
   local start_row, _ = cells.cell_range(bufnr, info.index)
-  local is_empty = true
-  for r = start_row + 1, lnum - 1 do
-    local line = vim.api.nvim_buf_get_lines(bufnr, r - 1, r, false)[1]
-    if line and line:match("%S") then
-      is_empty = false
-      break
-    end
+  
+  if not scratch_buf or not vim.api.nvim_buf_is_valid(scratch_buf) then
+    scratch_buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[scratch_buf].filetype = "python"
   end
   
-  if is_empty then return 0 end
+  -- Create lines for scratch buffer: empty strings up to lnum
+  local lines = {}
+  for i = 1, lnum do
+    lines[i] = ""
+  end
+  
+  -- Copy only the current python cell's lines into the scratch buffer
+  local cell_lines = vim.api.nvim_buf_get_lines(bufnr, start_row, lnum, false)
+  for i, line in ipairs(cell_lines) do
+    lines[start_row + i] = line
+  end
+  
+  -- Prevent out of bounds if lnum is smaller than the total lines we tried to set
+  vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, lines)
   
   local orig = vim.b[bufnr].jupyter_orig_indentexpr
-  if orig and orig ~= "" then
+  if not orig or orig == "" then return -1 end
+  
+  local indent = vim.api.nvim_buf_call(scratch_buf, function()
     local ok, res = pcall(vim.api.nvim_eval, orig)
     if ok then return res end
-  end
+    return -1
+  end)
   
-  return -1
+  return indent
 end
 
 return M
