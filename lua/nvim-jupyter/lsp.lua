@@ -96,9 +96,13 @@ function M.hover()
     text = text:gsub("\27%[[0-9;]*[a-zA-Z]", "")
     
     local split = vim.split(text, "\n")
-    vim.lsp.util.open_floating_preview(split, "markdown", {
+    local float_bufnr, float_winnr = vim.lsp.util.open_floating_preview(split, "markdown", {
       border = "rounded",
     })
+    if float_bufnr and vim.api.nvim_buf_is_valid(float_bufnr) then
+      vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = float_bufnr, silent = true, nowait = true })
+      vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", { buffer = float_bufnr, silent = true, nowait = true })
+    end
   else
     vim.notify("nvim-jupyter: No inspection data found", vim.log.levels.INFO)
   end
