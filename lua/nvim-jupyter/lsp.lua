@@ -96,12 +96,35 @@ function M.hover()
     text = text:gsub("\27%[[0-9;]*[a-zA-Z]", "")
     
     local split = vim.split(text, "\n")
+    -- If there's already a hover window, focus it (like standard LSP)
+    if M._hover_win and vim.api.nvim_win_is_valid(M._hover_win) then
+      vim.api.nvim_set_current_win(M._hover_win)
+      return
+    end
+
     local float_bufnr, float_winnr = vim.lsp.util.open_floating_preview(split, "markdown", {
       border = "rounded",
+      focus_id = "jupyter_hover",
     })
+    
     if float_bufnr and vim.api.nvim_buf_is_valid(float_bufnr) then
       vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = float_bufnr, silent = true, nowait = true })
       vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", { buffer = float_bufnr, silent = true, nowait = true })
+      
+      M._hover_win = float_winnr
+      
+      -- Auto-close when moving cursor in the original buffer
+      local current_bufnr = vim.api.nvim_get_current_buf()
+      vim.api.nvim_create_autocmd({"CursorMoved", "CursorMovedI", "InsertCharPre"}, {
+        buffer = current_bufnr,
+        callback = function()
+          if M._hover_win and vim.api.nvim_win_is_valid(M._hover_win) then
+            vim.api.nvim_win_close(M._hover_win, true)
+          end
+          M._hover_win = nil
+          return true -- delete the autocmd
+        end,
+      })
     end
   else
     vim.notify("nvim-jupyter: No inspection data found", vim.log.levels.INFO)
