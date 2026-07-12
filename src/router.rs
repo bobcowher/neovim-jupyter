@@ -166,6 +166,7 @@ async fn run_kernel_task(
 
     let _ = event_tx.send(Event::KernelReady { kernel_id: kernel_id.clone() }).await;
 
+    let mut exec_queue: std::collections::VecDeque<(String, String)> = std::collections::VecDeque::new();
     let mut exec_msg_id: Option<String> = None;
     let mut iopub_idle = true;
     let mut shell_done = true;
@@ -177,7 +178,7 @@ async fn run_kernel_task(
                 match cmd {
                     KernelCmd::Execute { msg_id, code } => {
                         if exec_msg_id.is_some() {
-                            let _ = event_tx.send(Event::Error { msg: "another execute is in progress".into() }).await;
+                            exec_queue.push_back((msg_id, code));
                             continue;
                         }
                         if let Err(e) = client.send_execute_request(&msg_id, &code).await {
@@ -213,6 +214,11 @@ async fn run_kernel_task(
             Ok(zmq_msg) = client.iopub.recv() => {
                 if let Ok(msg) = crate::wire::decode_iopub(&zmq_msg.into_vec(), &client.key) {
                     if let Some(ref mid) = exec_msg_id {
+                        let parent_id = msg.parent_header.get("msg_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if parent_id != mid { continue; }
+                        
                         let msg_type = msg.msg_type();
                         match msg_type {
                             "status" => {
@@ -300,6 +306,17 @@ async fn run_kernel_task(
                 let _ = event_tx.send(Event::ExecuteDone {
                     kernel_id: kernel_id.clone(), msg_id: mid, status: reply_status.clone(),
                 }).await;
+                
+                while let Some((next_msg_id, next_code)) = exec_queue.pop_front() {
+                    if let Err(e) = client.send_execute_request(&next_msg_id, &next_code).await {
+                        let _ = event_tx.send(Event::Error { msg: e.to_string() }).await;
+                    } else {
+                        exec_msg_id = Some(next_msg_id);
+                        iopub_idle = false;
+                        shell_done = false;
+                        break;
+                    }
+                }
             }
         }
     }

@@ -215,3 +215,64 @@ stay diff-friendly with the ecosystem.
 - **L5 (Single line JSON format):** `vim.json.encode` unfortunately doesn't support pretty printing natively. Doing so would require pulling in an external Lua JSON formatter library or a bunch of string manipulation, which feels overkill just for `notebook.save`.
 
 Let me know if the changes look good to you!
+
+--chat--
+
+**Claude (Opus 4.8):** Fast turnaround, and most of this is genuinely solid — I verified the
+tree. H2, M1 (ephemeral-bind is exactly right), M3, M6, and L2 all check out. Wiring
+`omnifunc` in `open_notebook` (L1) is the right call. And the `tokio::select!` rewrite of
+`run_kernel_task` is the correct shape for H1 — interrupt now lands mid-execute. Nice.
+
+But the select! refactor introduced two regressions, and one of your deferrals is no longer
+safe to defer. Please don't merge before these:
+
+**1. `:JupyterExecuteAll` is now broken (regression from H1).**
+`init.lua:529–535` still fires all N execute commands in a single tick (`for i=1,#marks do
+execute_cell(...)`). Under the old blocking loop, those queued in `cmd_rx` and drained one at
+a time. Your new loop reads them all immediately and the guard at `router.rs:179`
+(`if exec_msg_id.is_some()`) rejects every one after the first with "another execute is in
+progress." So Run-All now runs cell 1 and errors on 2..N. This is exactly why I flagged L3 —
+and why **L3 can't be deferred anymore**: your "ZMQ serializes them in the shell queue"
+reasoning was only true under the drain-one-at-a-time model you just removed. Fix is either
+the Lua-side chaining I suggested, *or* queue executes in the worker (push to a `VecDeque`
+when `exec_msg_id.is_some()`, pop on `ExecuteDone`) instead of rejecting them. I'd lean toward
+the worker queue since it also fixes any other batch sender.
+
+**2. iopub parent_header filtering got dropped — and wiring omnifunc made it reachable.**
+The old `execute_loop` did `if parent_id != msg_id { continue; }`. The new iopub arm
+(`router.rs:213–255`) processes *any* iopub message while `exec_msg_id.is_some()` and labels
+it with the current `mid`, with no parent check. Concretely: `complete_request` and
+`inspect_request` also make the kernel publish `status: busy`/`status: idle` on iopub. Now
+that omnifunc is wired (L1), a completion popup firing *while a cell is running* will deliver
+that request's `idle` into the running execute's arm → `iopub_idle = true` → premature
+`ExecuteDone` at `router.rs:298`, truncating the cell's output. Cheap fix: restore the guard —
+compare `msg.parent_header["msg_id"]` to `exec_msg_id` before acting, and drop non-matching
+iopub. The filter wasn't incidental; it's load-bearing.
+
+**3. M2 is only half-fixed.** The six lifecycle handlers are singletons now — good. But
+`register_handlers` still exists and still runs on every `M.start` (`kernels.lua:164`) and
+every restart (`:140`), and it re-registers a fresh `kernels_list` handler each time (`:33`),
+each capturing a stale `s`. Worse, those stale closures never leave `status == "picking"`
+(the old state table is dropped from `M._state`, so the global `kernel_started` handler that
+would flip it never matches it). Result: after two `:JupyterKernel` re-picks, multiple
+`kernels_list` handlers all see `"picking"` and each opens a selector — stacked duplicate
+picker windows. Make `kernels_list` a module-level singleton too, resolving the target buffer
+by scanning `M._state` for the one with `status == "picking"`, and delete `register_handlers`.
+
+**Conceding:**
+- **M4 (HMAC):** Agreed, localhost threat model makes verification non-urgent. Just add the
+  one-line comment at `decode_shell` so the ignored `_key_hex` param doesn't read as an
+  oversight to the next person. That's all I want here.
+- **M5 (stderr):** Fair — piping raw ipykernel stderr to the UI would be noise hell, you're
+  right not to. My actual ask was log-to-file, which you already flagged as the better path.
+  Suggest capturing stderr to the runtime dir *only on the heartbeat-timeout failure path*
+  (`router.rs:159`), so a dead kernel leaves a diagnosable trail without spamming a healthy
+  one. Defer the happy-path noise.
+- **L5 (pretty JSON):** Conceded — a formatter dep isn't worth it for `notebook.save`. Leave
+  it. (Only note for later: anyone git-tracking notebooks will get one-line diffs; a minimal
+  post-encode indent pass is cheaper than a library if it ever becomes a pain. Not now.)
+
+Priority: #1 and #2 are functional regressions, #3 is user-visible on repeated re-picks. The
+concessions are all fine as-is. Ship after those three.
+
+--chat--
