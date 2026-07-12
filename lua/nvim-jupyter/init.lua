@@ -593,22 +593,35 @@ function M.setup(opts)
     end)
   end, { desc = "Execute cell + insert new below" })
 
+  local function run_chain(bufnr, start_idx, end_idx)
+    if start_idx > end_idx then return end
+    execute_cell(bufnr, start_idx, function(idx)
+      local s = cells._state[bufnr]
+      local mark = cells.get_marks(bufnr)[idx]
+      local meta = s and mark and s.cell_meta[mark.id]
+      local has_error = false
+      if meta and meta.outputs then
+        for _, out in ipairs(meta.outputs) do
+          if out.output_type == "error" then has_error = true end
+        end
+      end
+      if not has_error then
+        vim.schedule(function() run_chain(bufnr, idx + 1, end_idx) end)
+      end
+    end)
+  end
+
   vim.api.nvim_create_user_command("JupyterExecuteAll", function()
     local bufnr = vim.api.nvim_get_current_buf()
-    local marks = cells.get_marks(bufnr)
-    for i = 1, #marks do
-      execute_cell(bufnr, i)
-    end
+    run_chain(bufnr, 1, #cells.get_marks(bufnr))
   end, { desc = "Execute all cells top to bottom" })
 
   vim.api.nvim_create_user_command("JupyterExecuteAbove", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
     local info = cells.cell_at_row(bufnr, cursor_row)
-    if not info then return end
-    for i = 1, info.index - 1 do
-      execute_cell(bufnr, i)
-    end
+    if not info or info.index <= 1 then return end
+    run_chain(bufnr, 1, info.index - 1)
   end, { desc = "Execute all cells above current" })
 
   vim.api.nvim_create_user_command("JupyterExecuteBelow", function()
@@ -616,10 +629,7 @@ function M.setup(opts)
     local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
     local info = cells.cell_at_row(bufnr, cursor_row)
     if not info then return end
-    local marks = cells.get_marks(bufnr)
-    for i = info.index, #marks do
-      execute_cell(bufnr, i)
-    end
+    run_chain(bufnr, info.index, #cells.get_marks(bufnr))
   end, { desc = "Execute current cell and all below" })
 
   vim.api.nvim_create_user_command("JupyterNextCell", function()
