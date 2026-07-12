@@ -163,48 +163,42 @@ local function execute_cell(bufnr, target_index, post_hook)
     return lines
   end
 
-  local hs = {}
-  hs.stream = daemon.on("stream", function(ev)
-    if ev.msg_id ~= msg_id then return end
-    table.insert(cell_outputs, { output_type = "stream", name = ev.name, text = split_text(ev.text) })
-    render(output._text_to_lines(ev.text), "NvimJupyterOutputText", nil)
-  end)
-
-  hs.execute_result = daemon.on("execute_result", function(ev)
-    if ev.msg_id ~= msg_id then return end
-    local data = { ["text/plain"] = split_text(ev.text) }
-    if ev.image_png and ev.image_png ~= vim.NIL then data["image/png"] = ev.image_png end
-    table.insert(cell_outputs, { output_type = "execute_result", execution_count = ev.execution_count, data = data, metadata = {} })
-    render(output._text_to_lines(ev.text), "NvimJupyterOutputText", ev.image_png)
-  end)
-
-  hs.execute_error = daemon.on("execute_error", function(ev)
-    if ev.msg_id ~= msg_id then return end
-    table.insert(cell_outputs, { output_type = "error", ename = ev.ename, evalue = ev.evalue, traceback = ev.traceback or {} })
-    local err_lines = { ev.ename .. ": " .. ev.evalue }
-    for _, tb in ipairs(ev.traceback or {}) do
-      local clean = output._strip_ansi(tb):gsub("\r", "")
-      for _, line in ipairs(output._text_to_lines(clean)) do table.insert(err_lines, line) end
-    end
-    render(err_lines, "NvimJupyterOutputError", nil)
-  end)
-
-  hs.execute_done = daemon.on("execute_done", function(ev)
-    if ev.msg_id ~= msg_id then return end
-    kernels.set_idle(bufnr)
-    if not had_output then clear_cell_output(bufnr, run_mark_id) end
-    local meta_curr = s and s.cell_meta[run_mark_id]
-    if meta_curr then
-      meta_curr.execution_count = ks.execution_count
-      meta_curr.outputs = cell_outputs
-      ks.execution_count = (ks.execution_count or 0) + 1
-    end
-    daemon.remove_handler("stream", hs.stream)
-    daemon.remove_handler("execute_result", hs.execute_result)
-    daemon.remove_handler("execute_error", hs.execute_error)
-    daemon.remove_handler("execute_done", hs.execute_done)
-    if post_hook then post_hook(index) end
-  end)
+  daemon.register_request(msg_id, {
+    route_events = {
+      stream = function(ev)
+        table.insert(cell_outputs, { output_type = "stream", name = ev.name, text = split_text(ev.text) })
+        render(output._text_to_lines(ev.text), "NvimJupyterOutputText", nil)
+      end,
+      execute_result = function(ev)
+        local data = { ["text/plain"] = split_text(ev.text) }
+        if ev.image_png and ev.image_png ~= vim.NIL then data["image/png"] = ev.image_png end
+        table.insert(cell_outputs, { output_type = "execute_result", execution_count = ev.execution_count, data = data, metadata = {} })
+        render(output._text_to_lines(ev.text), "NvimJupyterOutputText", ev.image_png)
+      end,
+      execute_error = function(ev)
+        table.insert(cell_outputs, { output_type = "error", ename = ev.ename, evalue = ev.evalue, traceback = ev.traceback or {} })
+        local err_lines = { ev.ename .. ": " .. ev.evalue }
+        for _, tb in ipairs(ev.traceback or {}) do
+          local clean = output._strip_ansi(tb):gsub("\r", "")
+          for _, line in ipairs(output._text_to_lines(clean)) do table.insert(err_lines, line) end
+        end
+        render(err_lines, "NvimJupyterOutputError", nil)
+      end
+    },
+    terminal_events = {
+      execute_done = function(ev)
+        kernels.set_idle(bufnr)
+        if not had_output then clear_cell_output(bufnr, run_mark_id) end
+        local meta_curr = s and s.cell_meta[run_mark_id]
+        if meta_curr then
+          if ev.execution_count then ks.execution_count = ev.execution_count end
+          meta_curr.execution_count = ks.execution_count
+          meta_curr.outputs = cell_outputs
+        end
+        if post_hook then post_hook(index) end
+      end
+    }
+  })
 end
 
 local ns_md = vim.api.nvim_create_namespace("nvim_jupyter_markdown")

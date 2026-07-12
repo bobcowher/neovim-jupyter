@@ -24,7 +24,7 @@ pub enum Event {
     Stream { kernel_id: String, msg_id: String, name: String, text: String },
     ExecuteResult { kernel_id: String, msg_id: String, execution_count: u32, text: String, image_png: Option<String> },
     ExecuteError { kernel_id: String, msg_id: String, ename: String, evalue: String, traceback: Vec<String> },
-    ExecuteDone { kernel_id: String, msg_id: String, status: String },
+    ExecuteDone { kernel_id: String, msg_id: String, status: String, execution_count: Option<u32> },
     CompleteReply { kernel_id: String, msg_id: String, matches: Vec<String>, cursor_start: u32, cursor_end: u32 },
     InspectReply { kernel_id: String, msg_id: String, found: bool, text: String },
     Error { msg: String },
@@ -96,7 +96,10 @@ mod tests {
     #[test]
     fn serialize_execute_done() {
         let ev = Event::ExecuteDone {
-            kernel_id: "k".into(), msg_id: "m".into(), status: "ok".into(),
+            kernel_id: "test".into(),
+            msg_id: "msg".into(),
+            status: "ok".into(),
+            execution_count: Some(1),
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains(r#""status":"ok""#));

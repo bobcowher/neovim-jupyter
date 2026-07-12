@@ -171,6 +171,7 @@ async fn run_kernel_task(
     let mut iopub_idle = true;
     let mut shell_done = true;
     let mut reply_status = String::from("ok");
+    let mut reply_exec_count: Option<u32> = None;
 
     loop {
         tokio::select! {
@@ -188,6 +189,7 @@ async fn run_kernel_task(
                         exec_msg_id = Some(msg_id);
                         iopub_idle = false;
                         shell_done = false;
+                        reply_exec_count = None;
                     }
                     KernelCmd::Complete { msg_id, code, cursor_pos } => {
                         if let Err(e) = client.send_complete_request(&msg_id, &code, cursor_pos).await {
@@ -266,6 +268,7 @@ async fn run_kernel_task(
                     match msg_type {
                         "execute_reply" => {
                             reply_status = msg.content["status"].as_str().unwrap_or("ok").to_string();
+                            reply_exec_count = msg.content.get("execution_count").and_then(|v| v.as_u64()).map(|v| v as u32);
                             shell_done = true;
                         }
                         "complete_reply" => {
@@ -304,7 +307,7 @@ async fn run_kernel_task(
         if shell_done && iopub_idle {
             if let Some(mid) = exec_msg_id.take() {
                 let _ = event_tx.send(Event::ExecuteDone {
-                    kernel_id: kernel_id.clone(), msg_id: mid, status: reply_status.clone(),
+                    kernel_id: kernel_id.clone(), msg_id: mid, status: reply_status.clone(), execution_count: reply_exec_count,
                 }).await;
                 
                 while let Some((next_msg_id, next_code)) = exec_queue.pop_front() {
@@ -314,6 +317,7 @@ async fn run_kernel_task(
                         exec_msg_id = Some(next_msg_id);
                         iopub_idle = false;
                         shell_done = false;
+                        reply_exec_count = None;
                         break;
                     }
                 }

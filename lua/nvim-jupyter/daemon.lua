@@ -3,6 +3,7 @@ local M = {}
 local state = {
   job_id     = nil,
   handlers   = {},
+  requests   = {},
   stdout_buf = "",
 }
 
@@ -13,6 +14,17 @@ local function binary_path()
 end
 
 local function dispatch(event)
+  if event.msg_id and state.requests[event.msg_id] then
+    local req = state.requests[event.msg_id]
+    if req.terminal_events and req.terminal_events[event.event] then
+      local fn = req.terminal_events[event.event]
+      state.requests[event.msg_id] = nil
+      fn(event)
+    elseif req.route_events and req.route_events[event.event] then
+      req.route_events[event.event](event)
+    end
+  end
+
   local handlers = state.handlers[event.event] or {}
   for _, fn in ipairs(handlers) do
     fn(event)
@@ -75,6 +87,13 @@ function M.on(event_type, handler)
   state.handlers[event_type] = state.handlers[event_type] or {}
   table.insert(state.handlers[event_type], handler)
   return handler
+end
+
+function M.register_request(msg_id, opts)
+  state.requests[msg_id] = {
+    terminal_events = opts.terminal_events,
+    route_events = opts.route_events,
+  }
 end
 
 function M.remove_handler(event_type, handler)

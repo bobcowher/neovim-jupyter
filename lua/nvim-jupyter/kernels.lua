@@ -3,10 +3,14 @@ local daemon = require("nvim-jupyter.daemon")
 local M = {}
 
 M._state = {}
-M._callbacks = {}
 
 function M.register_callback(msg_id, cb)
-  M._callbacks[msg_id] = cb
+  daemon.register_request(msg_id, {
+    terminal_events = {
+      complete_reply = cb,
+      inspect_reply = cb
+    }
+  })
 end
 
 local function new_uuid()
@@ -104,21 +108,7 @@ daemon.on("execute_done", function(ev)
   end
 end)
 
-daemon.on("complete_reply", function(ev)
-  local cb = M._callbacks[ev.msg_id]
-  if cb then
-    cb(ev)
-    M._callbacks[ev.msg_id] = nil
-  end
-end)
 
-daemon.on("inspect_reply", function(ev)
-  local cb = M._callbacks[ev.msg_id]
-  if cb then
-    cb(ev)
-    M._callbacks[ev.msg_id] = nil
-  end
-end)
 
 daemon.on("kernel_started", function(ev)
   for bufnr, s in pairs(M._state) do
