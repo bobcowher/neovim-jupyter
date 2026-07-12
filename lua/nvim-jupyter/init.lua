@@ -226,15 +226,19 @@ local ns_md = vim.api.nvim_create_namespace("nvim_jupyter_markdown")
 local function render_markdown_cells(bufnr)
   pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns_md, 0, -1)
   
-  if vim.api.nvim_get_mode().mode:sub(1,1) == "i" then return end
+  local mode = vim.api.nvim_get_mode().mode:sub(1,1)
+  local is_insert = (mode == "i" or mode == "R")
+  local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
 
   local marks = cells.get_marks(bufnr)
   for i, mark in ipairs(marks) do
     if mark.meta and mark.meta.cell_type == "markdown" then
       local start_row, end_row = cells.cell_range(bufnr, i)
-      local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row, false)
       
-      for r, line in ipairs(lines) do
+      if not (is_insert and cursor_row >= start_row and cursor_row <= end_row) then
+        local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row, false)
+        
+        for r, line in ipairs(lines) do
         local row = start_row + r - 1
         
         pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, 0, {
@@ -297,6 +301,7 @@ local function render_markdown_cells(bufnr)
         highlight_pattern("%*%*([^*]+)%*%*", "NvimJupyterMarkdownBold", 2)
         highlight_pattern("%*([^*]+)%*", "NvimJupyterMarkdownItalic", 1)
         highlight_pattern("`([^`]+)`", "NvimJupyterMarkdownCode", 1)
+      end
       end
     end
   end
@@ -386,9 +391,9 @@ local function open_notebook(path)
   vim.api.nvim_create_autocmd({ "InsertEnter" }, {
     buffer = bufnr,
     callback = function()
-      pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns_md, 0, -1)
+      render_markdown_cells(bufnr)
     end,
-    desc     = "nvim-jupyter: unrender markdown for raw editing",
+    desc     = "nvim-jupyter: unrender current markdown for raw editing",
   })
   
   -- Prevent the cursor from landing on the fake row 0
@@ -398,6 +403,9 @@ local function open_notebook(path)
       local cursor = vim.api.nvim_win_get_cursor(0)
       if cursor[1] == 1 then
         pcall(vim.api.nvim_win_set_cursor, 0, { 2, 0 })
+      end
+      if vim.api.nvim_get_mode().mode:sub(1,1) == "i" then
+        render_markdown_cells(bufnr)
       end
     end,
     desc     = "nvim-jupyter: prevent cursor on fake padding line",
