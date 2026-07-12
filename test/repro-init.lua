@@ -264,6 +264,14 @@ local specs = {
     build = "bash build.sh",
     config = function()
       require("nvim-jupyter").setup()
+      
+      vim.keymap.set("n", "K", "<cmd>JupyterHover<CR>", { desc = "Jupyter Hover" })
+      vim.api.nvim_create_autocmd({"BufEnter", "BufWinEnter"}, {
+        pattern = { "*.py", "*.ipynb" },
+        callback = function(ev)
+          vim.bo[ev.buf].omnifunc = "v:lua.require('nvim-jupyter.lsp').omnifunc"
+        end,
+      })
     end,
   },
 }

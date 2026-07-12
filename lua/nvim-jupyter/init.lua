@@ -358,11 +358,23 @@ local function open_notebook(path)
   local kernel_name = (nb.metadata.kernelspec or {}).name
   local cwd = vim.fn.fnamemodify(path, ":h")
   kernels.start(bufnr, kernel_name, cwd)
-
+  
+  vim.bo[bufnr].omnifunc = "v:lua.require('nvim-jupyter.lsp').omnifunc"
   apply_keymaps(bufnr)
+  refresh_all_marks(bufnr)
 end
 
-function apply_keymaps(bufnr)
+local function apply_keymaps(bufnr)
+  local mappings = {
+    { mode = "n", lhs = "<CR>", rhs = "<cmd>JupyterExecute<CR>", desc = "Execute cell" },
+    { mode = "n", lhs = "<S-CR>", rhs = "<cmd>JupyterExecute<CR>", desc = "Execute cell" },
+    { mode = "n", lhs = "]c", rhs = "<cmd>JupyterNextCell<CR>", desc = "Next cell" },
+    { mode = "n", lhs = "[c", rhs = "<cmd>JupyterPrevCell<CR>", desc = "Previous cell" },
+  }
+  for _, m in ipairs(mappings) do
+    vim.keymap.set(m.mode, m.lhs, m.rhs, { buffer = bufnr, desc = m.desc, silent = true })
+  end
+
   if config.options.keymaps == false then return end
   local km = config.options.keymap
   local o = { noremap = true, silent = true, buffer = bufnr }
@@ -608,10 +620,10 @@ function M.setup(opts)
     local bufnr = vim.api.nvim_get_current_buf()
     local row = vim.api.nvim_win_get_cursor(0)[1] - 1
     local info = cells.cell_at_row(bufnr, row)
-    if info then
-      clear_cell_output(bufnr, info.id)
+    if info and info.mark then
+      clear_cell_output(bufnr, info.mark.id)
     end
-  end, { desc = "Clear output for the current cell" })
+  end, { desc = "Clear output for current cell" })
 
   vim.api.nvim_create_user_command("JupyterClearAllOutputs", function()
     local bufnr = vim.api.nvim_get_current_buf()

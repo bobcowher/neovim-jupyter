@@ -18,18 +18,22 @@ pub struct ConnectionFile {
 
 impl ConnectionFile {
     pub fn generate(kernel_name: &str) -> Self {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-
-        let key_bytes: [u8; 32] = rng.gen();
-        let key = hex::encode(key_bytes);
+        use std::net::TcpListener;
+        let get_port = || -> u16 {
+            TcpListener::bind("127.0.0.1:0")
+                .and_then(|l| l.local_addr())
+                .map(|a| a.port())
+                .unwrap_or_else(|_| rand::random::<u16>() % 10000 + 50000)
+        };
+        
+        let key = hex::encode(rand::random::<[u8; 32]>());
 
         ConnectionFile {
-            shell_port: rng.gen_range(49152u16..65535u16),
-            iopub_port: rng.gen_range(49152u16..65535u16),
-            stdin_port: rng.gen_range(49152u16..65535u16),
-            control_port: rng.gen_range(49152u16..65535u16),
-            hb_port: rng.gen_range(49152u16..65535u16),
+            shell_port: get_port(),
+            iopub_port: get_port(),
+            stdin_port: get_port(),
+            control_port: get_port(),
+            hb_port: get_port(),
             ip: "127.0.0.1".into(),
             key,
             transport: "tcp".into(),
