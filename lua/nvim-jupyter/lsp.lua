@@ -91,6 +91,10 @@ function M.hover()
   if result and result.found and result.text and #result.text > 0 then
     -- Show hover window
     local text = result.text:gsub("\r", "")
+    
+    -- Strip ANSI escape codes that Jupyter includes for terminal coloring
+    text = text:gsub("\27%[[0-9;]*[a-zA-Z]", "")
+    
     local split = vim.split(text, "\n")
     vim.lsp.util.open_floating_preview(split, "markdown", {
       border = "rounded",
