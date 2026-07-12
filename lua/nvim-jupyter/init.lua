@@ -257,11 +257,46 @@ local function render_markdown_cells(bufnr)
           pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, #h_level + 1, {
             end_row = row,
             end_col = #line,
-            hl_group = "Title",
+            hl_group = "NvimJupyterMarkdownH" .. math.min(#h_level, 6),
             priority = 201,
             strict = false,
           })
         end
+
+        local text = line
+        local function highlight_pattern(pattern, hl_group, m_len)
+          local start_idx = 1
+          while true do
+            local s, e, inner = text:find(pattern, start_idx)
+            if not s then break end
+            
+            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, s - 1, {
+              end_col = s - 1 + m_len,
+              conceal = "",
+              priority = 202,
+              strict = false,
+            })
+            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, s - 1 + m_len, {
+              end_col = e - m_len,
+              hl_group = hl_group,
+              priority = 202,
+              strict = false,
+            })
+            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, e - m_len, {
+              end_col = e,
+              conceal = "",
+              priority = 202,
+              strict = false,
+            })
+            
+            text = text:sub(1, s - 1) .. string.rep(" ", e - s + 1) .. text:sub(e + 1)
+            start_idx = e + 1
+          end
+        end
+        
+        highlight_pattern("%*%*([^*]+)%*%*", "NvimJupyterMarkdownBold", 2)
+        highlight_pattern("%*([^*]+)%*", "NvimJupyterMarkdownItalic", 1)
+        highlight_pattern("`([^`]+)`", "NvimJupyterMarkdownCode", 1)
       end
     end
   end

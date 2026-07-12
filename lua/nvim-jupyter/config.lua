@@ -26,9 +26,18 @@ function M.setup(opts)
     M.options.runtime_dir = vim.fn.stdpath("data") .. "/nvim-jupyter"
   end
   local hls = {
-    NvimJupyterCellSep     = { link = "Comment" },
-    NvimJupyterMarkdown    = { link = "Normal" },
-    NvimJupyterOutputText  = { link = "String" },
+    NvimJupyterCellSep        = { link = "Comment" },
+    NvimJupyterMarkdown       = { link = "Normal" },
+    NvimJupyterMarkdownH1     = { link = "@markup.heading.1" },
+    NvimJupyterMarkdownH2     = { link = "@markup.heading.2" },
+    NvimJupyterMarkdownH3     = { link = "@markup.heading.3" },
+    NvimJupyterMarkdownH4     = { link = "@markup.heading.4" },
+    NvimJupyterMarkdownH5     = { link = "@markup.heading.5" },
+    NvimJupyterMarkdownH6     = { link = "@markup.heading.6" },
+    NvimJupyterMarkdownBold   = { link = "@markup.strong" },
+    NvimJupyterMarkdownItalic = { link = "@markup.italic" },
+    NvimJupyterMarkdownCode   = { link = "@markup.raw" },
+    NvimJupyterOutputText     = { link = "String" },
     NvimJupyterOutputError = { link = "ErrorMsg" },
     NvimJupyterOutputCount = { link = "Number" },
     NvimJupyterRunning     = { link = "WarningMsg" },
