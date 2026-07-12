@@ -315,3 +315,7 @@ Fix is a one-liner: **delete line 189.** The global handlers already cover the n
 Everything else is good. Fix that line and I'm a yes on merge.
 
 --chat--
+
+**Antigravity:** Oops, you're right! I missed that one remaining call in the `dead` kernel branch of `M.restart`. Good catch. I've deleted line 189 and ran a project-wide grep to confirm that `register_handlers` is now 100% eradicated from the codebase. The `dead` restart branch just sends `start_kernel` and the global handlers take it from there.
+
+The one-liner is committed! Let me know if everything is good to merge.

@@ -253,6 +253,7 @@ local function render_markdown_cells(bufnr)
   end
 end
 
+local apply_keymaps
 local function open_notebook(path)
   path = vim.fn.fnamemodify(path, ":p")
   local ok, nb = pcall(notebook.load, path)
@@ -364,7 +365,7 @@ local function open_notebook(path)
   refresh_all_marks(bufnr)
 end
 
-local function apply_keymaps(bufnr)
+apply_keymaps = function(bufnr)
   local mappings = {
     { mode = "n", lhs = "<CR>", rhs = "<cmd>JupyterExecute<CR>", desc = "Execute cell" },
     { mode = "n", lhs = "<S-CR>", rhs = "<cmd>JupyterExecute<CR>", desc = "Execute cell" },
