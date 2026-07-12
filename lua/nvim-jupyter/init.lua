@@ -485,24 +485,19 @@ apply_keymaps = function(bufnr)
   end, vim.tbl_extend("force", o, { expr = true, replace_keycodes = true, desc = "Context-aware delete (line or cell)" }))
 
   if km.delete_cell ~= false then
-    vim.keymap.set("n", km.delete_cell, function()
-      local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
-      local cell_info = cells.cell_at_row(bufnr, cursor_row)
-      if not cell_info then return end
-      cells.delete_cell(bufnr, cell_info.index)
-      vim.notify("nvim-jupyter: cell deleted", vim.log.levels.INFO)
-    end, vim.tbl_extend("force", o, { desc = "Delete cell" }))
+    vim.keymap.set("n", km.delete_cell, "<cmd>JupyterDeleteCell<CR>", vim.tbl_extend("force", o, { desc = "Delete cell" }))
   end
 
   if km.toggle_cell_type ~= false then
-    vim.keymap.set("n", km.toggle_cell_type, function()
-      local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
-      local cell_info = cells.cell_at_row(bufnr, cursor_row)
-      if not cell_info then return end
-      cells.toggle_cell_type(bufnr, cell_info.index)
-      render_markdown_cells(bufnr)
-      vim.notify("nvim-jupyter: toggled cell type", vim.log.levels.INFO)
-    end, vim.tbl_extend("force", o, { desc = "Toggle cell type code/markdown" }))
+    vim.keymap.set("n", km.toggle_cell_type, "<cmd>JupyterChangeCellType<CR>", vim.tbl_extend("force", o, { desc = "Toggle cell type code/markdown" }))
+  end
+
+  if km.add_cell_below ~= false then
+    vim.keymap.set("n", km.add_cell_below, "<cmd>JupyterAddCellBelow<CR>", vim.tbl_extend("force", o, { desc = "Add cell below" }))
+  end
+
+  if km.add_cell_above ~= false then
+    vim.keymap.set("n", km.add_cell_above, "<cmd>JupyterAddCellAbove<CR>", vim.tbl_extend("force", o, { desc = "Add cell above" }))
   end
 end
 
@@ -623,6 +618,13 @@ function M.setup(opts)
     local info = cells.cell_at_row(bufnr, row)
     cells.add_cell_below(bufnr, info and info.index or 0)
   end, { desc = "Add code cell below current" })
+
+  vim.api.nvim_create_user_command("JupyterAddCell", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local info = cells.cell_at_row(bufnr, row)
+    cells.add_cell_below(bufnr, info and info.index or 0)
+  end, { desc = "Add code cell below current (Alias)" })
 
   vim.api.nvim_create_user_command("JupyterAddCellAbove", function()
     local bufnr = vim.api.nvim_get_current_buf()

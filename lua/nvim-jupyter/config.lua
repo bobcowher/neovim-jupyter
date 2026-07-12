@@ -10,6 +10,8 @@ M.defaults = {
     prev_cell        = "[c",
     delete_cell      = "<space>d",
     toggle_cell_type = "<space>m",
+    add_cell_below   = "<space>b",
+    add_cell_above   = "<space>a",
   },
   max_output_lines = 50,
   runtime_dir = nil,
