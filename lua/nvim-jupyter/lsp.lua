@@ -113,6 +113,9 @@ function M.hover()
       
       M._hover_win = float_winnr
       
+      -- Automatically drop the cursor into the new window so q/ESC work immediately
+      vim.api.nvim_set_current_win(float_winnr)
+      
       -- Auto-close when moving cursor in the original buffer
       local current_bufnr = vim.api.nvim_get_current_buf()
       vim.api.nvim_create_autocmd({"CursorMoved", "CursorMovedI", "InsertCharPre"}, {
