@@ -113,13 +113,15 @@ function M.hover()
       
       M._hover_win = float_winnr
       
+      -- Capture original buffer before we change focus
+      local original_bufnr = vim.api.nvim_get_current_buf()
+      
       -- Automatically drop the cursor into the new window so q/ESC work immediately
       vim.api.nvim_set_current_win(float_winnr)
       
       -- Auto-close when moving cursor in the original buffer
-      local current_bufnr = vim.api.nvim_get_current_buf()
       vim.api.nvim_create_autocmd({"CursorMoved", "CursorMovedI", "InsertCharPre"}, {
-        buffer = current_bufnr,
+        buffer = original_bufnr,
         callback = function()
           if M._hover_win and vim.api.nvim_win_is_valid(M._hover_win) then
             vim.api.nvim_win_close(M._hover_win, true)
