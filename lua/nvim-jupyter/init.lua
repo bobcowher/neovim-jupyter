@@ -354,7 +354,7 @@ local function open_notebook(path)
     desc     = "nvim-jupyter: prevent cursor on fake padding line",
   })
 
-  vim.api.nvim_create_autocmd({ "BufWipeout" }, {
+  vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
     buffer = bufnr,
     callback = function()
       kernels.stop(bufnr)
