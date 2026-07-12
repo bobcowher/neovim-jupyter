@@ -77,12 +77,21 @@ function M.show_image(bufnr, anchor_row, b64_data)
 end
 
 function M.remove_image(bufnr, ext_id)
-  local img = images[ext_id]
-  if img then
-    M.clear_kitty(img.kitty_id)
+  if images[ext_id] then
+    M.clear_kitty(images[ext_id].kitty_id)
     images[ext_id] = nil
-    pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_images, ext_id)
   end
+  pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_images, ext_id)
+end
+
+function M.clear_buffer(bufnr)
+  for ext_id, img in pairs(images) do
+    if img.bufnr == bufnr then
+      M.clear_kitty(img.kitty_id)
+      images[ext_id] = nil
+    end
+  end
+  pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns_images, 0, -1)
 end
 
 function M.redraw()

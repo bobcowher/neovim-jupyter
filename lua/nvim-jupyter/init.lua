@@ -354,6 +354,16 @@ local function open_notebook(path)
     desc     = "nvim-jupyter: prevent cursor on fake padding line",
   })
 
+  vim.api.nvim_create_autocmd({ "BufWipeout" }, {
+    buffer = bufnr,
+    callback = function()
+      kernels.stop(bufnr)
+      cells.clear(bufnr)
+      graphics.clear_buffer(bufnr)
+    end,
+    desc     = "nvim-jupyter: teardown notebook state",
+  })
+
   render_markdown_cells(bufnr)
 
   local kernel_name = (nb.metadata.kernelspec or {}).name

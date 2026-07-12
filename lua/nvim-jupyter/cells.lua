@@ -177,5 +177,8 @@ function M.to_notebook_cells(bufnr)
   end
   return cells
 end
+function M.clear(bufnr)
+  M._state[bufnr] = nil
+end
 
 return M
