@@ -378,20 +378,25 @@ apply_keymaps = function(bufnr)
       if not s then return end
       local raw = vim.api.nvim_buf_get_extmarks(bufnr, s.ns_cells, 0, -1, { details = false })
       local line_count = vim.api.nvim_buf_line_count(bufnr)
-      local to_fix = {}
+      local to_delete = {}
       
       for i, m in ipairs(raw) do
         if i < #raw then
-          if m[2] == raw[i+1][2] then table.insert(to_fix, m[2]) end
+          if m[2] == raw[i+1][2] then table.insert(to_delete, m[1]) end
         else
-          if m[2] >= line_count then table.insert(to_fix, m[2]) end
+          if m[2] >= line_count then table.insert(to_delete, m[1]) end
         end
       end
       
-      if #to_fix > 0 then
-        -- Insert an empty line at each broken position, backwards to not invalidate rows
-        for i = #to_fix, 1, -1 do
-          vim.api.nvim_buf_set_lines(bufnr, to_fix[i], to_fix[i], false, { "" })
+      if #to_delete > 0 then
+        for _, id in ipairs(to_delete) do
+          if s.cell_output and s.cell_output[id] then
+            local e = s.cell_output[id]
+            if e.ext then pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, e.ext) end
+            s.cell_output[id] = nil
+          end
+          pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_cells, id)
+          if s.cell_meta then s.cell_meta[id] = nil end
         end
       end
     end
