@@ -38,6 +38,20 @@ local function reanchor_output(bufnr, mark_id)
   local entry = s.cell_output[mark_id]
   if not entry then return end
   
+  local row = cell_last_row_by_mark(bufnr, mark_id)
+  if not row then return end
+
+  local current_row = nil
+  if entry.ext then
+    local ok, pos = pcall(vim.api.nvim_buf_get_extmark_by_id, bufnr, s.ns_output, entry.ext, { details = false })
+    if ok and pos and #pos > 0 then current_row = pos[1] end
+  elseif entry.image_ext then
+    local ok, pos = pcall(vim.api.nvim_buf_get_extmark_by_id, bufnr, graphics.ns_images, entry.image_ext, { details = false })
+    if ok and pos and #pos > 0 then current_row = pos[1] end
+  end
+
+  if current_row == row then return end
+  
   if entry.image_ext then
     graphics.remove_image(bufnr, entry.image_ext)
     entry.image_ext = nil
@@ -47,8 +61,7 @@ local function reanchor_output(bufnr, mark_id)
     entry.ext = nil
   end
   
-  local row = cell_last_row_by_mark(bufnr, mark_id)
-  if not row then return end
+
 
   if entry.lines and #entry.lines > 0 then
     entry.ext = output.set_at(bufnr, s.ns_output, row, entry.lines, entry.hl,

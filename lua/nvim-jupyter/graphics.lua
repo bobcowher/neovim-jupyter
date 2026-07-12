@@ -1,7 +1,7 @@
 local M = {}
 
 local images = {}
-local ns_images = vim.api.nvim_create_namespace("nvim_jupyter_images")
+M.ns_images = vim.api.nvim_create_namespace("nvim_jupyter_images")
 local image_counter = 50000
 
 local function write_tty(data)
@@ -57,7 +57,7 @@ function M.show_image(bufnr, anchor_row, b64_data)
     table.insert(vl, { { string.rep(" ", 80), "Normal" } })
   end
   
-  local ext_id = vim.api.nvim_buf_set_extmark(bufnr, ns_images, anchor_row, 0, {
+  local ext_id = vim.api.nvim_buf_set_extmark(bufnr, M.ns_images, anchor_row, 0, {
     virt_lines = vl,
     virt_lines_above = false,
   })
@@ -81,7 +81,7 @@ function M.remove_image(bufnr, ext_id)
     M.clear_kitty(images[ext_id].kitty_id)
     images[ext_id] = nil
   end
-  pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_images, ext_id)
+  pcall(vim.api.nvim_buf_del_extmark, bufnr, M.ns_images, ext_id)
 end
 
 function M.clear_buffer(bufnr)
@@ -91,7 +91,7 @@ function M.clear_buffer(bufnr)
       images[ext_id] = nil
     end
   end
-  pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns_images, 0, -1)
+  pcall(vim.api.nvim_buf_clear_namespace, bufnr, M.ns_images, 0, -1)
 end
 
 function M.redraw()
@@ -102,7 +102,7 @@ function M.redraw()
 
   for ext_id, img in pairs(images) do
     if img.bufnr == bufnr then
-      local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns_images, {0,0}, {-1,-1}, {details=true})
+      local marks = vim.api.nvim_buf_get_extmarks(bufnr, M.ns_images, {0,0}, {-1,-1}, {details=true})
       local found = false
       local row = nil
       for _, m in ipairs(marks) do
