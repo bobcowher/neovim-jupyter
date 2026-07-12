@@ -46,14 +46,49 @@ function M.init(bufnr, nb, lines, cell_starts)
   end
 end
 
+local function delete_cell_by_id(bufnr, id)
+  local s = M._state[bufnr]
+  if not s then return end
+  if s.cell_output and s.cell_output[id] then
+    local e = s.cell_output[id]
+    if e.ext then pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_output, e.ext) end
+    s.cell_output[id] = nil
+  end
+  pcall(vim.api.nvim_buf_del_extmark, bufnr, s.ns_cells, id)
+  s.cell_meta[id] = nil
+end
+
 function M.get_marks(bufnr)
   local s = M._state[bufnr]
   if not s then return {} end
   local raw = vim.api.nvim_buf_get_extmarks(bufnr, s.ns_cells, 0, -1, { details = false })
   local marks = {}
-  for _, m in ipairs(raw) do
-    table.insert(marks, { id = m[1], row = m[2], meta = s.cell_meta[m[1]] })
+  local to_delete = {}
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  
+  for i, m in ipairs(raw) do
+    local has_lines = true
+    if i < #raw then
+      if m[2] == raw[i+1][2] then has_lines = false end
+    else
+      if m[2] >= line_count then has_lines = false end
+    end
+    
+    if has_lines then
+      table.insert(marks, { id = m[1], row = m[2], meta = s.cell_meta[m[1]] })
+    else
+      table.insert(to_delete, m[1])
+    end
   end
+  
+  if #to_delete > 0 then
+    vim.schedule(function()
+      for _, id in ipairs(to_delete) do
+        delete_cell_by_id(bufnr, id)
+      end
+    end)
+  end
+  
   table.sort(marks, function(a, b) return a.row < b.row end)
   return marks
 end
@@ -94,7 +129,13 @@ end
 function M.add_cell_below(bufnr, index)
   local s = M._state[bufnr]
   if not s then return end
-  local _, end_row = M.cell_range(bufnr, index)
+  local end_row
+  if index == 0 then
+    end_row = vim.api.nvim_buf_line_count(bufnr)
+  else
+    local _, er = M.cell_range(bufnr, index)
+    end_row = er or vim.api.nvim_buf_line_count(bufnr)
+  end
   vim.api.nvim_buf_set_lines(bufnr, end_row, end_row, false, { "" })
   local mark_id = vim.api.nvim_buf_set_extmark(bufnr, s.ns_cells, end_row, 0, {
     virt_lines = { sep_virt_line("code") },
@@ -108,7 +149,13 @@ end
 function M.add_cell_above(bufnr, index)
   local s = M._state[bufnr]
   if not s then return end
-  local start_row = M.get_marks(bufnr)[index].row
+  local start_row
+  if index == 0 then
+    start_row = 0
+  else
+    local marks = M.get_marks(bufnr)
+    start_row = marks[index] and marks[index].row or 0
+  end
   vim.api.nvim_buf_set_lines(bufnr, start_row, start_row, false, { "" })
   local mark_id = vim.api.nvim_buf_set_extmark(bufnr, s.ns_cells, start_row, 0, {
     virt_lines = { sep_virt_line("code") },

@@ -595,14 +595,14 @@ function M.setup(opts)
     local bufnr = vim.api.nvim_get_current_buf()
     local row = vim.api.nvim_win_get_cursor(0)[1] - 1
     local info = cells.cell_at_row(bufnr, row)
-    if info then cells.add_cell_below(bufnr, info.index) end
+    cells.add_cell_below(bufnr, info and info.index or 0)
   end, { desc = "Add code cell below current" })
 
   vim.api.nvim_create_user_command("JupyterAddCellAbove", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local row = vim.api.nvim_win_get_cursor(0)[1] - 1
     local info = cells.cell_at_row(bufnr, row)
-    if info then cells.add_cell_above(bufnr, info.index) end
+    cells.add_cell_above(bufnr, info and info.index or 0)
   end, { desc = "Add code cell above current" })
 
   vim.api.nvim_create_user_command("JupyterDeleteCell", function()
