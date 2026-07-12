@@ -119,8 +119,15 @@ function M.redraw()
           -- Anchor text is visible. Image starts on the next screen row.
           local screen_row = pos.row + 1
           local screen_col = pos.col
-          M.draw_kitty(img.kitty_id, screen_row, screen_col, img.b64_data)
-          img.visible = true
+          if not img.visible or img.screen_row ~= screen_row or img.screen_col ~= screen_col then
+            if img.visible then
+              M.clear_kitty(img.kitty_id)
+            end
+            M.draw_kitty(img.kitty_id, screen_row, screen_col, img.b64_data)
+            img.visible = true
+            img.screen_row = screen_row
+            img.screen_col = screen_col
+          end
         else
           -- Anchor text is offscreen. Check if we should clear it.
           if img.visible then
