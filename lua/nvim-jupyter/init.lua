@@ -238,7 +238,7 @@ local function render_markdown_cells(bufnr)
         pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_md, row, 0, {
           end_row = row,
           end_col = #line,
-          hl_group = "Comment",
+          hl_group = "NvimJupyterMarkdown",
           priority = 200,
           strict = false,
         })

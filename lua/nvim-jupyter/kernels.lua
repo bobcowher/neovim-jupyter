@@ -85,7 +85,8 @@ daemon.on("kernels_list", function(ev)
                 vim.system({ py_exe, "-m", "pip", "install", "ipykernel" }, { text = true }, function(install_obj)
                   vim.schedule(function()
                     if install_obj.code == 0 then
-                      vim.api.nvim_echo({{ "Installed ipykernel! You can now start the kernel.", "Normal" }}, false, {})
+                      vim.api.nvim_echo({{ "Installed ipykernel! Starting kernel...", "Normal" }}, false, {})
+                      daemon.send({ cmd = "start_kernel", kernel_id = s.kernel_id, kernel_name = chosen_name, cwd = s.cwd })
                     else
                       vim.notify("Failed to install ipykernel:\n" .. install_obj.stderr, vim.log.levels.ERROR)
                     end

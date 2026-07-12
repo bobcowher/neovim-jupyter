@@ -27,6 +27,7 @@ function M.setup(opts)
   end
   local hls = {
     NvimJupyterCellSep     = { link = "Comment" },
+    NvimJupyterMarkdown    = { link = "Normal" },
     NvimJupyterOutputText  = { link = "String" },
     NvimJupyterOutputError = { link = "ErrorMsg" },
     NvimJupyterOutputCount = { link = "Number" },
