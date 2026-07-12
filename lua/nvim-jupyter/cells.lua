@@ -63,32 +63,9 @@ function M.get_marks(bufnr)
   if not s then return {} end
   local raw = vim.api.nvim_buf_get_extmarks(bufnr, s.ns_cells, 0, -1, { details = false })
   local marks = {}
-  local to_delete = {}
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  
-  for i, m in ipairs(raw) do
-    local has_lines = true
-    if i < #raw then
-      if m[2] == raw[i+1][2] then has_lines = false end
-    else
-      if m[2] >= line_count then has_lines = false end
-    end
-    
-    if has_lines then
-      table.insert(marks, { id = m[1], row = m[2], meta = s.cell_meta[m[1]] })
-    else
-      table.insert(to_delete, m[1])
-    end
+  for _, m in ipairs(raw) do
+    table.insert(marks, { id = m[1], row = m[2], meta = s.cell_meta[m[1]] })
   end
-  
-  if #to_delete > 0 then
-    vim.schedule(function()
-      for _, id in ipairs(to_delete) do
-        delete_cell_by_id(bufnr, id)
-      end
-    end)
-  end
-  
   table.sort(marks, function(a, b) return a.row < b.row end)
   return marks
 end

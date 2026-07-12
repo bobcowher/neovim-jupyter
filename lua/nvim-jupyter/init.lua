@@ -371,6 +371,32 @@ local function open_notebook(path)
 end
 
 apply_keymaps = function(bufnr)
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+    buffer = bufnr,
+    callback = function()
+      local s = cells._state[bufnr]
+      if not s then return end
+      local raw = vim.api.nvim_buf_get_extmarks(bufnr, s.ns_cells, 0, -1, { details = false })
+      local line_count = vim.api.nvim_buf_line_count(bufnr)
+      local to_fix = {}
+      
+      for i, m in ipairs(raw) do
+        if i < #raw then
+          if m[2] == raw[i+1][2] then table.insert(to_fix, m[2]) end
+        else
+          if m[2] >= line_count then table.insert(to_fix, m[2]) end
+        end
+      end
+      
+      if #to_fix > 0 then
+        -- Insert an empty line at each broken position, backwards to not invalidate rows
+        for i = #to_fix, 1, -1 do
+          vim.api.nvim_buf_set_lines(bufnr, to_fix[i], to_fix[i], false, { "" })
+        end
+      end
+    end
+  })
+
   local mappings = {
     { mode = "n", lhs = "<CR>", rhs = "<cmd>JupyterExecute<CR>", desc = "Execute cell" },
     { mode = "n", lhs = "<S-CR>", rhs = "<cmd>JupyterExecute<CR>", desc = "Execute cell" },
