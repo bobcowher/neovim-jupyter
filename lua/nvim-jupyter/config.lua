@@ -14,6 +14,7 @@ M.defaults = {
     add_cell_above   = "<space>a",
   },
   max_output_lines = 50,
+  auto_save = true,
   runtime_dir = nil,
 }
 

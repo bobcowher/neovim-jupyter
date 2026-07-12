@@ -367,6 +367,19 @@ local function open_notebook(path)
   kernels.start(bufnr, kernel_name, cwd)
   
   vim.bo[bufnr].omnifunc = "v:lua.require('nvim-jupyter.lsp').omnifunc"
+  
+  if config.options.auto_save then
+    vim.api.nvim_create_autocmd({ "CursorHold", "CursorHoldI" }, {
+      buffer = bufnr,
+      callback = function()
+        if vim.bo[bufnr].modified then
+          vim.cmd("silent! write")
+        end
+      end,
+      desc     = "nvim-jupyter: auto-save on idle",
+    })
+  end
+
   apply_keymaps(bufnr)
 end
 
