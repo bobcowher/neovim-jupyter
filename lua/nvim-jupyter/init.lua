@@ -87,6 +87,7 @@ local function set_cell_output(bufnr, mark_id, opts)
     ext = prev and prev.ext or nil,
     image_ext = prev and prev.image_ext or nil,
   }
+  pcall(function() vim.bo[bufnr].modified = true end)
   reanchor_output(bufnr, mark_id, true)
 end
 
@@ -103,6 +104,7 @@ local function clear_cell_output(bufnr, mark_id)
     end
   end
   s.cell_output[mark_id] = nil
+  pcall(function() vim.bo[bufnr].modified = true end)
 end
 
 local function reanchor_all_output(bufnr)
@@ -697,6 +699,7 @@ function M.setup(opts)
     if info then
       cells.toggle_cell_type(bufnr, info.index)
       render_markdown_cells(bufnr)
+      pcall(function() vim.bo[bufnr].modified = true end)
     end
   end, { desc = "Toggle cell type code/markdown" })
 
