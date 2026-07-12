@@ -32,7 +32,7 @@ local function cell_last_row_by_mark(bufnr, mark_id)
   return nil
 end
 
-local function reanchor_output(bufnr, mark_id)
+local function reanchor_output(bufnr, mark_id, force)
   local s = cells._state[bufnr]
   if not s or not s.cell_output then return end
   local entry = s.cell_output[mark_id]
@@ -50,7 +50,7 @@ local function reanchor_output(bufnr, mark_id)
     if ok and pos and #pos > 0 then current_row = pos[1] end
   end
 
-  if current_row == row then return end
+  if not force and current_row == row then return end
   
   if entry.image_ext then
     graphics.remove_image(bufnr, entry.image_ext)
@@ -84,7 +84,7 @@ local function set_cell_output(bufnr, mark_id, opts)
     ext = prev and prev.ext or nil,
     image_ext = prev and prev.image_ext or nil,
   }
-  reanchor_output(bufnr, mark_id)
+  reanchor_output(bufnr, mark_id, true)
 end
 
 local function clear_cell_output(bufnr, mark_id)
@@ -106,7 +106,7 @@ local function reanchor_all_output(bufnr)
   local s = cells._state[bufnr]
   if not s or not s.cell_output then return end
   for mark_id, _ in pairs(s.cell_output) do
-    reanchor_output(bufnr, mark_id)
+    reanchor_output(bufnr, mark_id, false)
   end
 end
 
