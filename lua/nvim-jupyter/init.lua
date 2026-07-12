@@ -362,7 +362,6 @@ local function open_notebook(path)
   
   vim.bo[bufnr].omnifunc = "v:lua.require('nvim-jupyter.lsp').omnifunc"
   apply_keymaps(bufnr)
-  refresh_all_marks(bufnr)
 end
 
 apply_keymaps = function(bufnr)
