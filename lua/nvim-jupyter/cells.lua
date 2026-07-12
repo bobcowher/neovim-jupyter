@@ -39,6 +39,7 @@ function M.init(bufnr, nb, lines, cell_starts)
       virt_lines = { sep_virt_line(cell.cell_type) },
       virt_lines_above = true,
       hl_mode = "combine",
+      right_gravity = false,
     })
     M._state[bufnr].cell_meta[mark_id] = {
       cell_type       = cell.cell_type,
@@ -122,6 +123,7 @@ function M.add_cell_below(bufnr, index)
     virt_lines = { sep_virt_line("code") },
     virt_lines_above = true,
     hl_mode = "combine",
+    right_gravity = false,
   })
   s.cell_meta[mark_id] = { cell_type = "code", id = "", outputs = {}, execution_count = nil, metadata = {} }
   return index + 1
@@ -142,6 +144,7 @@ function M.add_cell_above(bufnr, index)
     virt_lines = { sep_virt_line("code") },
     virt_lines_above = true,
     hl_mode = "combine",
+    right_gravity = false,
   })
   s.cell_meta[mark_id] = { cell_type = "code", id = "", outputs = {}, execution_count = nil, metadata = {} }
   return index
@@ -176,6 +179,7 @@ function M.toggle_cell_type(bufnr, index)
     virt_lines = { sep_virt_line(meta.cell_type) },
     virt_lines_above = true,
     hl_mode = "combine",
+    right_gravity = false,
   })
   s.cell_meta[new_id] = meta
   s.cell_meta[marks[index].id] = nil
