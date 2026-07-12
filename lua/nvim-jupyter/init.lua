@@ -127,6 +127,7 @@ local function execute_cell(bufnr, target_index, post_hook)
 
   if meta and meta.cell_type == "markdown" then
     clear_cell_output(bufnr, run_mark_id)
+    if post_hook then post_hook(index) end
     return
   end
 
