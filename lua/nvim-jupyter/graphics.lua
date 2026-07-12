@@ -44,7 +44,7 @@ function M.clear_all()
   images = {}
 end
 
-function M.show_image(bufnr, anchor_row, b64_data)
+function M.show_image(bufnr, anchor_row, b64_data, text_lines_count)
   if #b64_data > 3000000 then
     vim.notify("nvim-jupyter: Image is too large to render inline (over 3MB). Use NvimGfx to view.", vim.log.levels.WARN)
     return nil
@@ -53,6 +53,7 @@ function M.show_image(bufnr, anchor_row, b64_data)
   -- 20 blank lines to make room for the image
   local height_lines = 20
   local vl = {}
+  table.insert(vl, { { "", "Normal" } }) -- padding line
   for i = 1, height_lines do
     table.insert(vl, { { string.rep(" ", 80), "Normal" } })
   end
@@ -60,16 +61,19 @@ function M.show_image(bufnr, anchor_row, b64_data)
   local ext_id = vim.api.nvim_buf_set_extmark(bufnr, M.ns_images, anchor_row, 0, {
     virt_lines = vl,
     virt_lines_above = false,
+    priority = 90,
   })
   
   local kitty_id = image_counter
   image_counter = image_counter + 1
   
+  local offset = text_lines_count or 0
   images[ext_id] = {
     bufnr = bufnr,
     kitty_id = kitty_id,
     b64_data = b64_data:gsub("%s+", ""), -- strip newlines
     visible = false,
+    offset_lines = offset + 1,
   }
   
   M.redraw()
@@ -117,7 +121,7 @@ function M.redraw()
         local pos = vim.fn.screenpos(winid, row + 1, 1)
         if pos.row > 0 then
           -- Anchor text is visible. Image starts on the next screen row.
-          local screen_row = pos.row + 1
+          local screen_row = pos.row + 1 + (img.offset_lines or 1)
           local screen_col = pos.col
           if not img.visible or img.screen_row ~= screen_row or img.screen_col ~= screen_col then
             if img.visible then

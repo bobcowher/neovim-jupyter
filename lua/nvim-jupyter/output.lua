@@ -27,6 +27,7 @@ end
 
 local function build_virt_lines(lines, hl)
   local vl = {}
+  table.insert(vl, { { "", "Normal" } })
   for _, line in ipairs(lines) do
     table.insert(vl, { { "▷ " .. line, hl } })
   end
@@ -43,6 +44,7 @@ function M.set(bufnr, ns_output, last_row, text_lines, hl, max_output_lines)
     virt_lines = vl,
     virt_lines_above = false,
     hl_mode = "combine",
+    priority = 100,
   })
 end
 
@@ -76,6 +78,7 @@ function M.append(bufnr, ns_output, last_row, new_lines, hl, max_output_lines)
     virt_lines = vl,
     virt_lines_above = false,
     hl_mode = "combine",
+    priority = 100,
   }
   if existing_id then opts.id = existing_id end
   vim.api.nvim_buf_set_extmark(bufnr, ns_output, last_row, 0, opts)
@@ -90,11 +93,13 @@ function M.set_at(bufnr, ns_output, row, text_lines, hl, max_output_lines, prev_
   end
   local truncated = M._truncate(text_lines, max_output_lines or 50)
   local vl = build_virt_lines(truncated, hl or "NvimJupyterOutputText")
-  return vim.api.nvim_buf_set_extmark(bufnr, ns_output, row, 0, {
+  local ext_id = vim.api.nvim_buf_set_extmark(bufnr, ns_output, row, 0, {
     virt_lines = vl,
     virt_lines_above = false,
     hl_mode = "combine",
+    priority = 100,
   })
+  return ext_id, #vl
 end
 
 -- Remove every output extmark anchored within the [start_row, end_row) range.

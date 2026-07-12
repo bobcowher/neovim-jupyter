@@ -63,12 +63,15 @@ local function reanchor_output(bufnr, mark_id, force)
   
 
 
+  local text_lines_count = 0
   if entry.lines and #entry.lines > 0 then
-    entry.ext = output.set_at(bufnr, s.ns_output, row, entry.lines, entry.hl,
+    local ext_id, vl_count = output.set_at(bufnr, s.ns_output, row, entry.lines, entry.hl,
       config.options.max_output_lines, nil)
+    entry.ext = ext_id
+    text_lines_count = vl_count
   end
   if entry.image_png and entry.image_png ~= vim.NIL then
-    entry.image_ext = graphics.show_image(bufnr, row, entry.image_png)
+    entry.image_ext = graphics.show_image(bufnr, row, entry.image_png, text_lines_count)
   end
 end
 
