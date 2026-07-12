@@ -329,6 +329,11 @@ local function open_notebook(path)
   local bufnr = vim.api.nvim_get_current_buf()
   vim.bo[bufnr].buftype  = "acwrite"
   vim.bo[bufnr].filetype = "python"
+  
+  -- Wrap the indentexpr to protect it from markdown cells
+  vim.b[bufnr].jupyter_orig_indentexpr = vim.bo[bufnr].indentexpr
+  vim.bo[bufnr].indentexpr = "v:lua.require('nvim-jupyter').indentexpr()"
+
   vim.bo[bufnr].swapfile = false
   vim.api.nvim_buf_set_name(bufnr, path)
 
@@ -847,6 +852,37 @@ function M.setup(opts)
       end,
     })
   end, { desc = "Build nvim-jupyter Rust binary" })
+end
+
+function M.indentexpr()
+  local lnum = vim.v.lnum
+  local bufnr = vim.api.nvim_get_current_buf()
+  local cells = require("nvim-jupyter.cells")
+  local info = cells.cell_at_row(bufnr, lnum - 1)
+  
+  if not info or (info.meta and info.meta.cell_type == "markdown") then
+    return -1
+  end
+  
+  local start_row, _ = cells.cell_range(bufnr, info.index)
+  local is_empty = true
+  for r = start_row + 1, lnum - 1 do
+    local line = vim.api.nvim_buf_get_lines(bufnr, r - 1, r, false)[1]
+    if line and line:match("%S") then
+      is_empty = false
+      break
+    end
+  end
+  
+  if is_empty then return 0 end
+  
+  local orig = vim.b[bufnr].jupyter_orig_indentexpr
+  if orig and orig ~= "" then
+    local ok, res = pcall(vim.api.nvim_eval, orig)
+    if ok then return res end
+  end
+  
+  return -1
 end
 
 return M
