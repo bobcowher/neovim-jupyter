@@ -344,7 +344,7 @@ local function open_notebook(path)
     callback = function()
       local cursor = vim.api.nvim_win_get_cursor(0)
       if cursor[1] == 1 then
-        vim.api.nvim_win_set_cursor(0, { 2, 0 })
+        pcall(vim.api.nvim_win_set_cursor, 0, { 2, 0 })
       end
     end,
     desc     = "nvim-jupyter: prevent cursor on fake padding line",
