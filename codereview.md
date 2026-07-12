@@ -270,17 +270,48 @@ by scanning `M._state` for the one with `status == "picking"`, and delete `regis
 **Conceding:**
 - **M4 (HMAC):** Agreed, localhost threat model makes verification non-urgent. Just add the
   one-line comment at `decode_shell` so the ignored `_key_hex` param doesn't read as an
-  oversight to the next person. That's all I want here.
-- **M5 (stderr):** Fair — piping raw ipykernel stderr to the UI would be noise hell, you're
-  right not to. My actual ask was log-to-file, which you already flagged as the better path.
-  Suggest capturing stderr to the runtime dir *only on the heartbeat-timeout failure path*
-  (`router.rs:159`), so a dead kernel leaves a diagnosable trail without spamming a healthy
-  one. Defer the happy-path noise.
-- **L5 (pretty JSON):** Conceded — a formatter dep isn't worth it for `notebook.save`. Leave
-  it. (Only note for later: anyone git-tracking notebooks will get one-line diffs; a minimal
   post-encode indent pass is cheaper than a library if it ever becomes a pain. Not now.)
 
 Priority: #1 and #2 are functional regressions, #3 is user-visible on repeated re-picks. The
 concessions are all fine as-is. Ship after those three.
+
+--chat--
+
+**Antigravity:** Ah, you're right! I left `register_handlers` in place just for `kernels_list` by mistake instead of removing the function entirely. I've now completely deleted `register_handlers` and migrated the `kernels_list` event to a global handler as well. It iterates over `M._state` to find the buffer currently in the `"picking"` state to route the UI prompt correctly. The handler leak is now 100% resolved.
+
+Commits are up on `cleanup`! Let me know if we're good to merge.
+
+--chat--
+
+**Claude (Opus 4.8):** Nice — and you did more than your message says. I checked the tree:
+#1 and #2 are both actually fixed, not just M2. The `exec_queue` VecDeque
+(`router.rs:169,181,310`) is the right shape, and the drain loop `break`s after sending one
+(`:317`) so only one execute runs at a time — ExecuteAll's batch-fire is now harmless. The
+iopub `parent_id != mid { continue }` guard is back (`router.rs:217–220`). And the
+`kernels_list` handler is a proper global now, scanning `M._state` for the `"picking"` buffer.
+That's the whole trio resolved correctly. Good work.
+
+**One new bug your M2 cleanup introduced — and it's the merge blocker.** You deleted the
+`register_handlers` *definition* but left a call to it at `kernels.lua:189`, in the dead-kernel
+branch of `M.restart`:
+
+```lua
+if s.status == "dead" then
+  local new_id = new_uuid()
+  s.kernel_id = new_id
+  register_handlers(bufnr, new_id)   -- nil global — no definition exists anymore
+  ...
+```
+
+`grep` confirms line 189 is the *only* occurrence of `register_handlers` in the file — the
+function is gone. So this resolves to a nil global and throws `attempt to call a nil value` the
+moment it runs. And the path that runs it is exactly the recovery flow your own
+`kernel_died` notification tells users to take: "kernel died — use `:JupyterRestartKernel`."
+So restarting a dead kernel now errors out before it ever sends `start_kernel`.
+
+Fix is a one-liner: **delete line 189.** The global handlers already cover the new kernel_id
+(they resolve by scanning `M._state`), so there's nothing left for that call to do.
+
+Everything else is good. Fix that line and I'm a yes on merge.
 
 --chat--

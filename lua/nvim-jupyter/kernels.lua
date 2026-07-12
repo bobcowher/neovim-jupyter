@@ -186,7 +186,6 @@ function M.restart(bufnr)
   if s.status == "dead" then
     local new_id = new_uuid()
     s.kernel_id = new_id
-    register_handlers(bufnr, new_id)
     daemon.send({ cmd = "start_kernel", kernel_id = new_id, kernel_name = s.kernel_name, cwd = s.cwd })
     set_status(bufnr, new_id, "starting")
     return
