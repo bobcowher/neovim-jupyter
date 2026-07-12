@@ -27,7 +27,11 @@ function M.init(bufnr, nb, lines, cell_starts)
   local ns_output = vim.api.nvim_create_namespace("nvim_jupyter_output_" .. bufnr)
   M._state[bufnr] = { ns_cells = ns_cells, ns_output = ns_output, cell_meta = {}, cell_output = {} }
 
+  -- Temporarily disable undo to prevent user from undoing the initial load
+  local old_ul = vim.bo[bufnr].undolevels
+  vim.bo[bufnr].undolevels = -1
   vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  vim.bo[bufnr].undolevels = old_ul
 
   for i, cell in ipairs(nb.cells) do
     local row = cell_starts[i] - 1
