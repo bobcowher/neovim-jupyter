@@ -481,34 +481,21 @@ apply_keymaps = function(bufnr)
     vim.keymap.set("n", km.toggle_cell_type, "<cmd>JupyterChangeCellType<CR>", vim.tbl_extend("force", o, { desc = "Toggle cell type code/markdown" }))
   end
 
-  local function repeatable_add(cmd_name, keymap_str, desc)
-    local key = keymap_str:sub(-1)
-    vim.cmd(cmd_name)
-    vim.cmd("redraw")
-    vim.api.nvim_echo({{desc .. " (press '" .. key .. "' to repeat)", "Normal"}}, false, {})
-    while true do
-      local ok, char = pcall(vim.fn.getcharstr)
-      if not ok or char ~= key then
-        if char and char ~= "\27" then -- don't feed back Escape
-          vim.api.nvim_feedkeys(char, "m", true)
-        end
-        break
-      end
-      vim.cmd(cmd_name)
-      vim.cmd("redraw")
-    end
-    vim.api.nvim_echo({{"", "Normal"}}, false, {})
-  end
-
   if km.add_cell_below ~= false then
     vim.keymap.set("n", km.add_cell_below, function()
-      repeatable_add("JupyterAddCellBelow", km.add_cell_below, "Added cell below")
+      local count = vim.v.count1
+      for _ = 1, count do
+        vim.cmd("JupyterAddCellBelow")
+      end
     end, vim.tbl_extend("force", o, { desc = "Add cell below" }))
   end
 
   if km.add_cell_above ~= false then
     vim.keymap.set("n", km.add_cell_above, function()
-      repeatable_add("JupyterAddCellAbove", km.add_cell_above, "Added cell above")
+      local count = vim.v.count1
+      for _ = 1, count do
+        vim.cmd("JupyterAddCellAbove")
+      end
     end, vim.tbl_extend("force", o, { desc = "Add cell above" }))
   end
 end
