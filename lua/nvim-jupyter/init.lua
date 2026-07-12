@@ -164,6 +164,7 @@ local function execute_cell(bufnr, target_index, post_hook)
   end
 
   daemon.register_request(msg_id, {
+    kernel_id = ks.kernel_id,
     route_events = {
       stream = function(ev)
         table.insert(cell_outputs, { output_type = "stream", name = ev.name, text = split_text(ev.text) })

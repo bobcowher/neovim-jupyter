@@ -35,7 +35,8 @@ function M.omnifunc(findstart, base)
     -- Request completion
     local msg_id = kernels.new_msg_id()
     local result = nil
-    kernels.register_callback(msg_id, function(ev)
+    local kernel_id = kernels.state(bufnr).kernel_id
+    kernels.register_callback(msg_id, kernel_id, function(ev)
       result = ev
     end)
     kernels.complete(bufnr, msg_id, code, cursor_pos)
@@ -80,7 +81,8 @@ function M.hover()
   cursor_pos = cursor_pos + col
   
   local msg_id = kernels.new_msg_id()
-  kernels.register_callback(msg_id, vim.schedule_wrap(function(result)
+  local kernel_id = kernels.state(bufnr).kernel_id
+  kernels.register_callback(msg_id, kernel_id, vim.schedule_wrap(function(result)
     if result and result.found and result.text and #result.text > 0 then
       -- Show hover window
       local text = result.text:gsub("\r", "")

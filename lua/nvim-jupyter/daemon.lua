@@ -14,6 +14,16 @@ local function binary_path()
 end
 
 local function dispatch(event)
+  if event.event == "kernel_died" then
+    for mid, req in pairs(state.requests) do
+      if req.kernel_id == event.kernel_id then
+        state.requests[mid] = nil
+      end
+    end
+  elseif event.event == "daemon_died" then
+    state.requests = {}
+  end
+
   if event.msg_id and state.requests[event.msg_id] then
     local req = state.requests[event.msg_id]
     if req.terminal_events and req.terminal_events[event.event] then
@@ -91,6 +101,7 @@ end
 
 function M.register_request(msg_id, opts)
   state.requests[msg_id] = {
+    kernel_id = opts.kernel_id,
     terminal_events = opts.terminal_events,
     route_events = opts.route_events,
   }

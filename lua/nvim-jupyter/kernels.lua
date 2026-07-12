@@ -4,8 +4,9 @@ local M = {}
 
 M._state = {}
 
-function M.register_callback(msg_id, cb)
+function M.register_callback(msg_id, kernel_id, cb)
   daemon.register_request(msg_id, {
+    kernel_id = kernel_id,
     terminal_events = {
       complete_reply = cb,
       inspect_reply = cb
