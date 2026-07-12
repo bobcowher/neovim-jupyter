@@ -27,72 +27,77 @@ local function set_status(bufnr, kernel_id, status)
   end
 end
 
-local function register_handlers(bufnr, kernel_id)
-  local s = M._state[bufnr]
-
-  daemon.on("kernels_list", function(ev)
-    if s.status ~= "picking" then return end
-    local names = {}
-    local current_idx = nil
-    for i, k in ipairs(ev.kernels) do
-      local display = k.name .. " — " .. k.display_name
-      if s.picking_name == k.name then
-        display = "★ " .. display
-        current_idx = i
-      end
-      table.insert(names, display)
-    end
-    if current_idx and current_idx > 1 then
-      local current = table.remove(names, current_idx)
-      table.insert(names, 1, current)
-    end
-    if #names == 0 then
-      vim.notify("nvim-jupyter: no kernels found — run: pip install ipykernel", vim.log.levels.ERROR)
-      return
-    end
-    require("nvim-jupyter.ui").select(names, { prompt = "Select Jupyter kernel (Current Buffer Scope):" }, function(choice)
-      if not choice then return end
-      local choice_clean = choice:gsub("^★%s*", "")
-      local chosen_name = choice_clean:match("^([^%s]+)")
-      s.kernel_name = chosen_name
-
-      local chosen_spec
-      for _, k in ipairs(ev.kernels) do
-        if k.name == chosen_name then chosen_spec = k break end
-      end
-
-      if chosen_spec and chosen_spec.language == "python" and chosen_spec.argv and chosen_spec.argv[1] then
-        local py_exe = chosen_spec.argv[1]
-        vim.system({ py_exe, "-c", "import ipykernel" }, { text = true }, function(obj)
-          vim.schedule(function()
-            if obj.code ~= 0 then
-              require("nvim-jupyter.ui").select({ "Yes", "No" }, { prompt = "ipykernel is missing in this environment. Install it now?", no_confirm = true }, function(ans)
-                if ans == "Yes" then
-                  vim.api.nvim_echo({{ "Installing ipykernel...", "Normal" }}, false, {})
-                  vim.system({ py_exe, "-m", "pip", "install", "ipykernel" }, { text = true }, function(install_obj)
-                    vim.schedule(function()
-                      if install_obj.code == 0 then
-                        vim.api.nvim_echo({{ "Installed ipykernel! You can now start the kernel.", "Normal" }}, false, {})
-                      else
-                        vim.notify("Failed to install ipykernel:\n" .. install_obj.stderr, vim.log.levels.ERROR)
-                      end
-                    end)
-                  end)
-                end
-              end)
-            else
-              daemon.send({ cmd = "start_kernel", kernel_id = kernel_id, kernel_name = chosen_name, cwd = s.cwd })
-            end
-          end)
-        end)
-      else
-        daemon.send({ cmd = "start_kernel", kernel_id = kernel_id, kernel_name = chosen_name, cwd = s.cwd })
-      end
-    end)
-  end)
-end
-
 -- Global handlers for lifecycle events
+daemon.on("kernels_list", function(ev)
+  -- Find the buffer that is currently picking a kernel
+  local target_bufnr, target_s
+  for bufnr, s in pairs(M._state) do
+    if s.status == "picking" then
+      target_bufnr, target_s = bufnr, s
+      break
+    end
+  end
+  if not target_bufnr then return end
+  local s = target_s
+
+  local names = {}
+  local current_idx = nil
+  for i, k in ipairs(ev.kernels) do
+    local display = k.name .. " — " .. k.display_name
+    if s.picking_name == k.name then
+      display = "★ " .. display
+      current_idx = i
+    end
+    table.insert(names, display)
+  end
+  if current_idx and current_idx > 1 then
+    local current = table.remove(names, current_idx)
+    table.insert(names, 1, current)
+  end
+  if #names == 0 then
+    vim.notify("nvim-jupyter: no kernels found — run: pip install ipykernel", vim.log.levels.ERROR)
+    return
+  end
+  require("nvim-jupyter.ui").select(names, { prompt = "Select Jupyter kernel (Current Buffer Scope):" }, function(choice)
+    if not choice then return end
+    local choice_clean = choice:gsub("^★%s*", "")
+    local chosen_name = choice_clean:match("^([^%s]+)")
+    s.kernel_name = chosen_name
+
+    local chosen_spec
+    for _, k in ipairs(ev.kernels) do
+      if k.name == chosen_name then chosen_spec = k break end
+    end
+
+    if chosen_spec and chosen_spec.language == "python" and chosen_spec.argv and chosen_spec.argv[1] then
+      local py_exe = chosen_spec.argv[1]
+      vim.system({ py_exe, "-c", "import ipykernel" }, { text = true }, function(obj)
+        vim.schedule(function()
+          if obj.code ~= 0 then
+            require("nvim-jupyter.ui").select({ "Yes", "No" }, { prompt = "ipykernel is missing in this environment. Install it now?", no_confirm = true }, function(ans)
+              if ans == "Yes" then
+                vim.api.nvim_echo({{ "Installing ipykernel...", "Normal" }}, false, {})
+                vim.system({ py_exe, "-m", "pip", "install", "ipykernel" }, { text = true }, function(install_obj)
+                  vim.schedule(function()
+                    if install_obj.code == 0 then
+                      vim.api.nvim_echo({{ "Installed ipykernel! You can now start the kernel.", "Normal" }}, false, {})
+                    else
+                      vim.notify("Failed to install ipykernel:\n" .. install_obj.stderr, vim.log.levels.ERROR)
+                    end
+                  end)
+                end)
+              end
+            end)
+          else
+            daemon.send({ cmd = "start_kernel", kernel_id = s.kernel_id, kernel_name = chosen_name, cwd = s.cwd })
+          end
+        end)
+      end)
+    else
+      daemon.send({ cmd = "start_kernel", kernel_id = s.kernel_id, kernel_name = chosen_name, cwd = s.cwd })
+    end
+  end)
+end)
 daemon.on("execute_done", function(ev)
   for bufnr, s in pairs(M._state) do
     if s.kernel_id == ev.kernel_id then set_status(bufnr, ev.kernel_id, "idle") end
@@ -137,7 +142,6 @@ daemon.on("kernel_died", function(ev)
         s.restarting = false
         local new_id = new_uuid()
         s.kernel_id = new_id
-        register_handlers(bufnr, new_id)
         daemon.send({ cmd = "start_kernel", kernel_id = new_id, kernel_name = s.kernel_name, cwd = s.cwd })
       else
         set_status(bufnr, ev.kernel_id, "dead")
@@ -155,19 +159,17 @@ function M.start(bufnr, kernel_name, cwd, old_name)
     kernel_id       = kernel_id,
     kernel_name     = kernel_name,
     picking_name    = old_name,
-    status          = "starting",
+    status          = (not kernel_name or kernel_name == "") and "picking" or "starting",
     execution_count = 0,
     cwd             = cwd or vim.fn.getcwd(),
+    restarting      = false,
   }
-  vim.b[bufnr].jupyter_kernel_status = "starting"
+  vim.b[bufnr].jupyter_kernel_status = M._state[bufnr].status
 
-  register_handlers(bufnr, kernel_id)
-
-  if kernel_name then
-    daemon.send({ cmd = "start_kernel", kernel_id = kernel_id, kernel_name = kernel_name, cwd = cwd })
-  else
-    M._state[bufnr].status = "picking"
+  if not kernel_name or kernel_name == "" then
     daemon.send({ cmd = "list_kernels" })
+  else
+    daemon.send({ cmd = "start_kernel", kernel_id = kernel_id, kernel_name = kernel_name, cwd = cwd })
   end
 end
 

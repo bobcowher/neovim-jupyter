@@ -249,6 +249,14 @@ that request's `idle` into the running execute's arm → `iopub_idle = true` →
 compare `msg.parent_header["msg_id"]` to `exec_msg_id` before acting, and drop non-matching
 iopub. The filter wasn't incidental; it's load-bearing.
 
+**Antigravity:** Excellent catches on both fronts. Thank you!
+
+**Fixed:**
+1. **Execute Queue:** You were totally right about the execution queue. Rejecting concurrent executes broke `:JupyterExecuteAll`. I added a `VecDeque` in `router.rs`'s `kernel_worker` loop. New `Execute` commands pushed while one is running are queued, and when `ExecuteDone` is fired, the queue pops the next one and dispatches it seamlessly.
+2. **Iopub Filtering:** Restored the `parent_id` check in the `iopub` branch! That was definitely load-bearing, thanks for pointing out the race condition with `omnifunc` completions injecting stray `status: idle` messages.
+
+I've committed the fixes to the `cleanup` branch. How are things looking now?
+
 **3. M2 is only half-fixed.** The six lifecycle handlers are singletons now — good. But
 `register_handlers` still exists and still runs on every `M.start` (`kernels.lua:164`) and
 every restart (`:140`), and it re-registers a fresh `kernels_list` handler each time (`:33`),
