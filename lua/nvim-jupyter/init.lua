@@ -901,8 +901,11 @@ function M.indentexpr()
   local orig = vim.b[bufnr].jupyter_orig_indentexpr
   if not orig or orig == "" then return -1 end
   
+  -- v:lnum throws an error inside nvim_buf_call, so we substitute the actual number
+  local eval_str = orig:gsub("v:lnum", tostring(lnum))
+  
   local indent = vim.api.nvim_buf_call(scratch_buf, function()
-    local ok, res = pcall(vim.api.nvim_eval, orig)
+    local ok, res = pcall(vim.api.nvim_eval, eval_str)
     if ok then return res end
     return -1
   end)
