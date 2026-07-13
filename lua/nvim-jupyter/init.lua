@@ -898,16 +898,12 @@ function M.indentexpr()
     if parser then parser:parse(true) end
   end)
   
+  local orig = vim.b[bufnr].jupyter_orig_indentexpr
+  if not orig or orig == "" then return -1 end
+  
   local indent = vim.api.nvim_buf_call(scratch_buf, function()
-    -- Try treesitter indent first if available
-    local has_ts, ts_indent = pcall(require, "nvim-treesitter.indent")
-    if has_ts and ts_indent then
-      local res = ts_indent.get_indent(lnum)
-      if type(res) == "number" and res >= 0 then return res end
-    end
-    -- Fall back to standard python indent
-    local ok, res = pcall(vim.fn.GetPythonIndent, lnum)
-    if ok and type(res) == "number" then return res end
+    local ok, res = pcall(vim.api.nvim_eval, orig)
+    if ok then return res end
     return -1
   end)
   
